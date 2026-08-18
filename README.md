@@ -308,15 +308,7 @@ up — I want to click through every screen and see real charts, not
 
 placeholders.  pls see that u use suitable tech stack and for ai/ml use python with backend in python
 
-This project was built with [Lovable](https://lovable.dev).
 
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/cbd3da2c-f5ac-4abc-ba5f-52d64e6b41c3).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
 
 ## Development
 
