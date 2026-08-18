@@ -152,6 +152,42 @@ export async function generateRAGQuiz(params: {
           ],
         },
       ],
+      graphs: {
+        similarity_chart: [
+          { chunk_id: "chunk_0417", similarity: 91.2, timestamp: "14:20", topic: params.topic, token_count: 32 },
+          { chunk_id: "chunk_0419", similarity: 88.7, timestamp: "18:45", topic: params.topic, token_count: 28 },
+          { chunk_id: "chunk_0512", similarity: 84.1, timestamp: "22:10", topic: params.topic, token_count: 30 },
+          { chunk_id: "chunk_0388", similarity: 80.3, timestamp: "26:30", topic: params.topic, token_count: 35 },
+        ],
+        irt_curve: [
+          { mastery: 0, success_probability: 12.4, current_learner: false },
+          { mastery: 20, success_probability: 25.1, current_learner: false },
+          { mastery: 40, success_probability: 48.6, current_learner: mastery >= 35 && mastery < 45 },
+          { mastery: 50, success_probability: 62.1, current_learner: mastery >= 45 && mastery < 55 },
+          { mastery: 60, success_probability: 74.8, current_learner: mastery >= 55 && mastery < 65 },
+          { mastery: 80, success_probability: 89.2, current_learner: false },
+          { mastery: 100, success_probability: 96.5, current_learner: false },
+        ],
+        cognitive_dimensions: [
+          { dimension: "Remember", weight: 25, target: 20 },
+          { dimension: "Understand", weight: 35, target: 35 },
+          { dimension: "Apply", weight: 25, target: 30 },
+          { dimension: "Analyze", weight: 15, target: 15 },
+        ],
+        concept_graph: {
+          nodes: [
+            { id: "root", label: params.topic, group: "core", size: 24 },
+            { id: "c1", label: "Kernel Space", group: "subconcept", similarity: 91, size: 16 },
+            { id: "c2", label: "Support Vectors", group: "subconcept", similarity: 89, size: 16 },
+            { id: "c3", label: "Margin Slack (C)", group: "subconcept", similarity: 84, size: 16 },
+          ],
+          links: [
+            { source: "root", target: "c1", value: 9.1 },
+            { source: "root", target: "c2", value: 8.9 },
+            { source: "root", target: "c3", value: 8.4 },
+          ],
+        },
+      },
       questions: [
         {
           q: `In ${params.topic}, what is the direct consequence of increasing the regularization hyperparameter C?`,

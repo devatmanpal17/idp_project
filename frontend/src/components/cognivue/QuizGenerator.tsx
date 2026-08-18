@@ -10,10 +10,27 @@ import {
   Wand2,
   CheckCircle2,
   XCircle,
-  ArrowRight,
   RotateCcw,
   SendHorizontal,
+  BarChart3,
+  TrendingUp,
+  BrainCircuit,
+  Network,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  Cell,
+} from "recharts";
 import { cn } from "@/lib/utils";
 import { Panel } from "./primitives";
 import {
@@ -54,6 +71,8 @@ export function QuizGenerator({
   const [quizData, setQuizData] = useState<RAGQuizResponse | null>(null);
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState<"generating" | "answering" | "results">("generating");
+  const [activeGraphTab, setActiveGraphTab] = useState<"similarity" | "irt" | "bloom" | "concept">("similarity");
+  const [showGraphs, setShowGraphs] = useState(true);
 
   // User responses
   const [userAnswers, setUserAnswers] = useState<string[]>([]);
@@ -101,7 +120,7 @@ export function QuizGenerator({
       onDone?.();
       return;
     }
-    const t = setTimeout(() => setStep((s) => s + 1), 750);
+    const t = setTimeout(() => setStep((s) => s + 1), 600);
     return () => clearTimeout(t);
   }, [step, isStepsDone, loading, quizData, onDone]);
 
@@ -139,22 +158,33 @@ export function QuizGenerator({
   };
 
   return (
-    <div className={cn("space-y-3", compact ? "text-[11px]" : "text-xs")}>
-      <div className="flex items-center justify-between">
+    <div className={cn("space-y-3.5", compact ? "text-[11px]" : "text-xs")}>
+      {/* Top Header & Engine Status */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-2">
         <div className="flex items-center gap-2 text-muted-foreground">
-          <Wand2 className="h-3.5 w-3.5 text-primary" />
-          <span>
-            RAG pipeline · <span className="font-semibold text-foreground">{topicTitle}</span>
+          <Wand2 className="h-4 w-4 text-primary animate-pulse" />
+          <span className="font-semibold text-foreground">
+            Adaptive RAG Quiz · {topicTitle}
           </span>
         </div>
-        {quizData && (
-          <span className="num rounded bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
-            calibrated diff: {quizData.calibration.difficulty}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {quizData && (
+            <>
+              <span className="num rounded bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                {quizData.active_provider || "OpenAI GPT-4o-mini / RAG"}
+              </span>
+              <span className="num rounded bg-surface-2 px-2 py-0.5 text-[10px] text-muted-foreground">
+                diff: {quizData.calibration.difficulty}
+              </span>
+              <span className="num rounded bg-surface-2 px-2 py-0.5 text-[10px] text-muted-foreground">
+                {quizData.total_time_ms}ms
+              </span>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* RAG Telemetry Steps */}
+      {/* RAG Telemetry Execution Pipeline */}
       <div className="space-y-1.5">
         {visibleSteps.map((s, i) => {
           const complete = i < step;
@@ -166,8 +196,8 @@ export function QuizGenerator({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
               className={cn(
-                "rounded-md border border-border bg-surface-2 px-2.5 py-2",
-                !complete && "border-primary/40 shadow-sm",
+                "rounded-md border border-border bg-surface-2 px-3 py-2",
+                !complete && "border-primary/50 shadow-sm ring-1 ring-primary/20",
               )}
             >
               <div className="flex items-center gap-2">
@@ -200,6 +230,202 @@ export function QuizGenerator({
         })}
       </div>
 
+      {/* Dynamic Graphs & RAG Intelligence Panel */}
+      {isStepsDone && quizData?.graphs && (
+        <Panel className="overflow-hidden border border-border/80 bg-surface/80 p-3">
+          <div className="flex items-center justify-between border-b border-border/60 pb-2">
+            <div className="flex items-center gap-2">
+              <BrainCircuit className="h-3.5 w-3.5 text-accent" />
+              <span className="text-[11px] font-semibold text-foreground">
+                RAG & Educational Assessment Graphs
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setShowGraphs(!showGraphs)}
+                className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-surface-2 hover:text-foreground"
+              >
+                {showGraphs ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                {showGraphs ? "Collapse" : "Expand"}
+              </button>
+            </div>
+          </div>
+
+          {showGraphs && (
+            <div className="mt-2 space-y-3">
+              {/* Tab Selector */}
+              <div className="flex flex-wrap gap-1 border-b border-border/40 pb-2 text-[10px]">
+                <button
+                  type="button"
+                  onClick={() => setActiveGraphTab("similarity")}
+                  className={cn(
+                    "flex items-center gap-1 rounded px-2 py-1 font-medium transition",
+                    activeGraphTab === "similarity"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-surface-2 text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <BarChart3 className="h-3 w-3" />
+                  Vector Similarities
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveGraphTab("irt")}
+                  className={cn(
+                    "flex items-center gap-1 rounded px-2 py-1 font-medium transition",
+                    activeGraphTab === "irt"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-surface-2 text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <TrendingUp className="h-3 w-3" />
+                  IRT Mastery Curve
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveGraphTab("bloom")}
+                  className={cn(
+                    "flex items-center gap-1 rounded px-2 py-1 font-medium transition",
+                    activeGraphTab === "bloom"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-surface-2 text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <BrainCircuit className="h-3 w-3" />
+                  Bloom Cognitive Load
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveGraphTab("concept")}
+                  className={cn(
+                    "flex items-center gap-1 rounded px-2 py-1 font-medium transition",
+                    activeGraphTab === "concept"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-surface-2 text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Network className="h-3 w-3" />
+                  Knowledge Graph
+                </button>
+              </div>
+
+              {/* Tab 1: Vector Cosine Similarities Chart */}
+              {activeGraphTab === "similarity" && (
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span>Retrieved Lecture Transcript Chunks (TF-IDF Cosine Match %)</span>
+                    <span className="font-mono text-primary">Top Match: {quizData.graphs.similarity_chart[0]?.similarity}%</span>
+                  </div>
+                  <div className="h-28 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={quizData.graphs.similarity_chart} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                        <XAxis dataKey="chunk_id" stroke="#71717a" fontSize={10} />
+                        <YAxis domain={[50, 100]} stroke="#71717a" fontSize={10} />
+                        <Tooltip
+                          contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: "6px", fontSize: "11px" }}
+                          formatter={(value: any) => [`${value}% match`, "Cosine Similarity"]}
+                        />
+                        <Bar dataKey="similarity" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                          {quizData.graphs.similarity_chart.map((_, index) => (
+                            <Cell key={`cell-${index}`} fill={index === 0 ? "#60a5fa" : "#3b82f6"} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 2: IRT Characteristic Curve */}
+              {activeGraphTab === "irt" && (
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span>Item Response Theory (2PL) Characteristic Curve — P(Success | Mastery)</span>
+                    <span className="font-mono text-warn">Target Difficulty: {quizData.calibration.difficulty}</span>
+                  </div>
+                  <div className="h-28 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={quizData.graphs.irt_curve} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="irtGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                        <XAxis dataKey="mastery" stroke="#71717a" fontSize={10} label={{ value: "Mastery Score", position: "insideBottom", offset: -2, fontSize: 9, fill: "#71717a" }} />
+                        <YAxis domain={[0, 100]} stroke="#71717a" fontSize={10} />
+                        <Tooltip
+                          contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: "6px", fontSize: "11px" }}
+                          formatter={(value: any) => [`${value}%`, "Expected Success Probability"]}
+                        />
+                        <Area type="monotone" dataKey="success_probability" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#irtGrad)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 3: Bloom's Cognitive Load */}
+              {activeGraphTab === "bloom" && (
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span>Cognitive Demand Level Distribution (Bloom's Taxonomy)</span>
+                    <span className="font-semibold text-foreground">{quizData.calibration.target_level}</span>
+                  </div>
+                  <div className="h-28 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={quizData.graphs.cognitive_dimensions} layout="vertical" margin={{ top: 0, right: 20, left: 10, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" horizontal={false} />
+                        <XAxis type="number" domain={[0, 50]} stroke="#71717a" fontSize={10} />
+                        <YAxis type="category" dataKey="dimension" stroke="#71717a" fontSize={10} width={65} />
+                        <Tooltip
+                          contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: "6px", fontSize: "11px" }}
+                          formatter={(val: any) => [`${val}% weight`, "Cognitive Proportion"]}
+                        />
+                        <Bar dataKey="weight" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 4: Concept Knowledge Graph */}
+              {activeGraphTab === "concept" && (
+                <div>
+                  <div className="mb-1.5 text-[10px] text-muted-foreground">
+                    Grounded Knowledge Nodes & Vector Associations
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {quizData.graphs.concept_graph.nodes.map((node) => (
+                      <div
+                        key={node.id}
+                        className={cn(
+                          "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px]",
+                          node.group === "core"
+                            ? "border-primary bg-primary/20 text-primary font-semibold"
+                            : "border-border bg-surface-2 text-foreground",
+                        )}
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                        <span>{node.label}</span>
+                        {node.similarity !== undefined && (
+                          <span className="num text-[9px] text-muted-foreground">
+                            {node.similarity}%
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </Panel>
+      )}
+
       {/* Questions Section */}
       <AnimatePresence>
         {isStepsDone && quizData && (
@@ -209,8 +435,8 @@ export function QuizGenerator({
             className="space-y-3 pt-1"
           >
             <div className="flex items-center justify-between">
-              <div className="label-xs text-foreground">
-                {mode === "results" ? "AI Evaluation & Score Breakdown" : "Interactive Assessment"}
+              <div className="label-xs font-semibold text-foreground">
+                {mode === "results" ? "AI Evaluation & Score Breakdown" : "Generated Assessment Questions"}
               </div>
               <div className="text-[11px] text-muted-foreground">
                 {quizData.questions.length} questions generated
@@ -332,7 +558,7 @@ export function QuizGenerator({
                 <button
                   onClick={handleSubmitQuiz}
                   disabled={submitting || userAnswers.filter(Boolean).length === 0}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-1.5 text-xs font-medium text-primary-foreground shadow transition hover:bg-primary/90 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-xs font-medium text-primary-foreground shadow transition hover:bg-primary/90 disabled:opacity-50"
                 >
                   {submitting ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -344,11 +570,11 @@ export function QuizGenerator({
               </div>
             ) : (
               evaluation && (
-                <Panel className="border-primary/30 bg-primary/5 p-4">
+                <Panel className="border-primary/30 bg-primary/5 p-4 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="num text-xl font-bold text-foreground">
+                        <span className="num text-2xl font-bold text-foreground">
                           {evaluation.score}%
                         </span>
                         <span className="num text-xs text-muted-foreground">
@@ -380,9 +606,39 @@ export function QuizGenerator({
                       className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface-2"
                     >
                       <RotateCcw className="h-3.5 w-3.5" />
-                      Retake
+                      Retake Quiz
                     </button>
                   </div>
+
+                  {/* Post-Quiz Bayesian Mastery Shift Graph */}
+                  {evaluation.mastery_shift_chart && (
+                    <div className="rounded-md border border-border bg-surface-2 p-3">
+                      <div className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground">
+                        <span>Bayesian Mastery Shift & Trajectory Comparison</span>
+                        <span className="font-semibold text-positive">
+                          {evaluation.previous_mastery} → {evaluation.new_mastery}
+                        </span>
+                      </div>
+                      <div className="h-24 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={evaluation.mastery_shift_chart} margin={{ top: 5, right: 10, left: -25, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                            <XAxis dataKey="metric" stroke="#71717a" fontSize={10} />
+                            <YAxis domain={[0, 100]} stroke="#71717a" fontSize={10} />
+                            <Tooltip
+                              contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: "6px", fontSize: "11px" }}
+                              formatter={(value: any) => [`${value}`, "Score / Level"]}
+                            />
+                            <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                              {evaluation.mastery_shift_chart.map((entry, index) => (
+                                <Cell key={`shift-${index}`} fill={index === 0 ? "#818cf8" : index === 1 ? "#34d399" : "#38bdf8"} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
                 </Panel>
               )
             )}

@@ -1,154 +1,24 @@
 """
 Cognivue ML — LLM Service
-Multi-provider LLM generation and evaluation engine supporting:
-1. Google Gemini (1.5 / 2.0 Flash)
-2. OpenAI (GPT-4o-mini)
-3. Local Intelligent RAG Generator & Grader
+Multi-provider LLM generation and evaluation engine.
+
+Priority order:
+1. OpenAI (GPT-4o-mini) — preferred
+2. Google Gemini (gemini-2.0-flash)
+3. Local RAG-grounded generator (zero-key fallback)
+
+All quiz generation and evaluation goes through the LLM when a key is available.
 """
 
 import os
 import json
 import random
+import traceback
 import urllib.request
 import urllib.error
 from typing import List, Dict, Any, Optional
 
 from .calibration import compute_mastery_update
-
-# Question library for zero-key local generation fallback, grounded in RAG contexts
-TOPIC_QUESTION_BANK: Dict[str, List[Dict[str, Any]]] = {
-    "Support Vector Machines": [
-        {
-            "q": "In a soft-margin SVM, increasing the hyperparameter C causes the model to...",
-            "choices": [
-                "Tolerate more margin violations",
-                "Penalize misclassifications and margin violations more heavily",
-                "Increase the number of kernel dimensions",
-                "Remove support vectors from the training set"
-            ],
-            "answer": "Penalize misclassifications and margin violations more heavily",
-            "why": "C acts as an inverse regularization parameter. A larger C puts higher weight on penalizing slack variables xi, forcing smaller margins with fewer violations, which can increase risk of overfitting."
-        },
-        {
-            "q": "Which statement precisely describes the role of support vectors?",
-            "choices": [
-                "Every single point in the training dataset is classified as a support vector",
-                "Only data points lying on or inside the margin boundaries determine the decision hyperplane",
-                "Support vectors are randomly sampled to reduce computational complexity",
-                "Support vectors are pruned before optimization begins"
-            ],
-            "answer": "Only data points lying on or inside the margin boundaries determine the decision hyperplane",
-            "why": "Removing any non-support vector leaves the optimal separating hyperplane completely unchanged — this sparsity is the defining mathematical property of Support Vector Machines."
-        },
-        {
-            "q": "Why is the Radial Basis Function (RBF) kernel often chosen as a default non-linear kernel?",
-            "choices": [
-                "It restricts the feature space to exactly two dimensions",
-                "It implicitly projects inputs into an infinite-dimensional Hilbert space with only gamma to tune",
-                "It guarantees zero training and test error on any dataset",
-                "It eliminates the need for calculating inner products"
-            ],
-            "answer": "It implicitly projects inputs into an infinite-dimensional Hilbert space with only gamma to tune",
-            "why": "The RBF kernel computes similarity as exp(-gamma ||x - z||^2), corresponding to an infinite-dimensional space that can separate complex non-linear boundaries with minimal parameter tuning."
-        },
-        {
-            "q": "What is the primary computational benefit of the Kernel Trick in SVMs?",
-            "choices": [
-                "It calculates inner products in high-dimensional feature spaces without explicitly computing transformed coordinates",
-                "It speeds up database indexing by sorting training rows",
-                "It transforms the objective function from convex to linear",
-                "It replaces quadratic programming with ordinary least squares"
-            ],
-            "answer": "It calculates inner products in high-dimensional feature spaces without explicitly computing transformed coordinates",
-            "why": "The kernel trick replaces phi(x) dot phi(z) with K(x, z), avoiding the astronomical or infinite memory cost of explicit high-dimensional feature representation."
-        }
-    ],
-    "Linear Regression": [
-        {
-            "q": "What objective function does the Ordinary Least Squares (OLS) method minimize?",
-            "choices": [
-                "The sum of squared vertical residuals between actual and predicted values",
-                "The maximum absolute residual across all training points",
-                "The variance of the independent features",
-                "The sum of absolute percentage errors"
-            ],
-            "answer": "The sum of squared vertical residuals between actual and predicted values",
-            "why": "OLS computes parameter estimates beta by finding the hyperplane that minimizes the sum of squared differences between observed y and predicted y_hat."
-        },
-        {
-            "q": "What does an R-squared value of 0.0 indicate about a linear regression model?",
-            "choices": [
-                "The model is overfitted to the training data",
-                "The model explains none of the variance in the target variable beyond predicting the mean",
-                "The model has achieved a zero residual error",
-                "The regression line has an infinite slope"
-            ],
-            "answer": "The model explains none of the variance in the target variable beyond predicting the mean",
-            "why": "R-squared measures the proportion of total variance explained by the regression. A value of 0.0 means the model performs no better than predicting the mean of y."
-        }
-    ],
-    "React Hooks": [
-        {
-            "q": "When does a useEffect hook with an empty dependency array `[]` execute?",
-            "choices": [
-                "Before every DOM mutation",
-                "Once after the initial render and mount",
-                "Only when the component unmounts",
-                "On every state update across the entire app"
-            ],
-            "answer": "Once after the initial render and mount",
-            "why": "An empty dependency array informs React that the effect does not depend on any reactive props or state, so it runs once after mount and cleans up on unmount."
-        },
-        {
-            "q": "What is the primary difference between useMemo and useCallback?",
-            "choices": [
-                "useMemo caches a computed return value; useCallback caches a function definition identity",
-                "useCallback is for async operations; useMemo is strictly synchronous",
-                "useMemo triggers re-renders; useCallback prevents DOM paints",
-                "There is no difference; they are aliases in React 19"
-            ],
-            "answer": "useMemo caches a computed return value; useCallback caches a function definition identity",
-            "why": "useMemo(() => compute(), [deps]) returns the memoized value, while useCallback(fn, [deps]) returns the memoized function reference itself."
-        }
-    ],
-    "Graph Traversal": [
-        {
-            "q": "Which data structure is utilized by Breadth-First Search (BFS) to manage vertex visitation order?",
-            "choices": [
-                "A First-In First-Out (FIFO) Queue",
-                "A Last-In First-Out (LIFO) Stack",
-                "A Fibonacci Heap",
-                "A Hash Set without ordering"
-            ],
-            "answer": "A First-In First-Out (FIFO) Queue",
-            "why": "BFS visits vertices in order of their level/distance from the starting node, requiring a FIFO queue to process neighbors in arrival order."
-        },
-        {
-            "q": "What is the standard time complexity of BFS on a graph with V vertices and E edges represented as an adjacency list?",
-            "choices": [
-                "O(V + E)",
-                "O(V * E)",
-                "O(V^2)",
-                "O(E log V)"
-            ],
-            "answer": "O(V + E)",
-            "why": "Every vertex is enqueued and dequeued at most once (O(V)), and every edge adjacency list is scanned once in directed or twice in undirected graphs (O(E))."
-        }
-    ],
-    "Dynamic Programming": [
-        {
-            "q": "What two fundamental characteristics are required for Dynamic Programming to be applicable to a problem?",
-            "choices": [
-                "Optimal substructure and overlapping subproblems",
-                "Greedy choice property and disjoint subgraphs",
-                "Exponential state space and randomized pivots",
-                "Linear constraints and sorting invariance"
-            ],
-            "answer": "Optimal substructure and overlapping subproblems",
-            "why": "Optimal substructure ensures the global optimum is composed of subproblem optima, and overlapping subproblems ensures solving and caching subproblems avoids exponential recomputation."
-        }
-    ]
-};
 
 
 class LLMService:
@@ -156,6 +26,16 @@ class LLMService:
         self.gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
         self.openai_api_key = os.environ.get("OPENAI_API_KEY", "")
         self.preferred_provider = os.environ.get("AI_PROVIDER", "auto")
+        self._last_provider_used = "none"
+
+    @property
+    def active_provider(self) -> str:
+        """Returns the provider that will actually be used."""
+        if self.openai_api_key:
+            return "openai"
+        if self.gemini_api_key:
+            return "gemini"
+        return "local_rag_engine"
 
     def configure(self, provider: str, api_key: str):
         """Update API configuration at runtime."""
@@ -164,6 +44,8 @@ class LLMService:
             self.gemini_api_key = api_key
         elif provider == "openai":
             self.openai_api_key = api_key
+
+    # ── Quiz Generation ─────────────────────────────────────────────
 
     def generate_quiz_with_rag(
         self,
@@ -175,97 +57,168 @@ class LLMService:
     ) -> List[Dict[str, Any]]:
         """
         Generate structured quiz questions grounded in retrieved RAG context chunks.
+        Tries real LLM providers first, falls back to local only if no key available.
         """
-        # Try Gemini API if key is available
-        if (self.preferred_provider in ["auto", "gemini"]) and self.gemini_api_key:
+        # Try OpenAI first (preferred)
+        if self.openai_api_key and self.preferred_provider in ["auto", "openai"]:
             try:
-                gemini_res = self._call_gemini_rag(topic, context_chunks, difficulty, count)
-                if gemini_res:
-                    return gemini_res
+                result = self._call_openai_quiz(topic, context_chunks, mastery_score, difficulty, count)
+                if result:
+                    self._last_provider_used = "openai/gpt-4o-mini"
+                    print(f"[LLM] [OK] Generated {len(result)} questions via OpenAI GPT-4o-mini")
+                    return result
             except Exception as e:
-                print(f"[LLMService] Gemini error: {e}, falling back to local engine")
+                print(f"[LLM] OpenAI quiz generation error: {e}")
 
-        # Try OpenAI API if key is available
-        if (self.preferred_provider in ["auto", "openai"]) and self.openai_api_key:
+        # Try Gemini
+        if self.gemini_api_key and self.preferred_provider in ["auto", "gemini"]:
             try:
-                openai_res = self._call_openai_rag(topic, context_chunks, difficulty, count)
-                if openai_res:
-                    return openai_res
+                result = self._call_gemini_quiz(topic, context_chunks, mastery_score, difficulty, count)
+                if result:
+                    self._last_provider_used = "gemini/gemini-2.0-flash"
+                    print(f"[LLM] [OK] Generated {len(result)} questions via Gemini 2.0 Flash")
+                    return result
             except Exception as e:
-                print(f"[LLMService] OpenAI error: {e}, falling back to local engine")
+                print(f"[LLM] Gemini quiz generation error: {e}")
 
-        # Fallback to local intelligent generative engine
-        return self._generate_local_rag(topic, context_chunks, difficulty, count)
+        # Local fallback
+        self._last_provider_used = "local_rag_engine"
+        print(f"[LLM] Using local RAG engine (no API keys configured)")
+        return self._generate_local_quiz(topic, context_chunks, difficulty, count)
 
-    def _call_gemini_rag(
+    # ── Quiz Evaluation ──────────────────────────────────────────────
+
+    def evaluate_quiz(
+        self,
+        questions: List[Dict[str, Any]],
+        given_answers: List[str],
+        current_mastery: float
+    ) -> Dict[str, Any]:
+        """
+        Evaluates student responses. Uses LLM for detailed feedback when available,
+        falls back to exact-match grading otherwise.
+        """
+        # Try LLM-powered evaluation
+        if self.openai_api_key:
+            try:
+                result = self._call_openai_evaluate(questions, given_answers, current_mastery)
+                if result:
+                    print(f"[LLM] [OK] Evaluated quiz via OpenAI GPT-4o-mini")
+                    return result
+            except Exception as e:
+                print(f"[LLM] OpenAI evaluation error: {e}, using local grading")
+
+        if self.gemini_api_key:
+            try:
+                result = self._call_gemini_evaluate(questions, given_answers, current_mastery)
+                if result:
+                    print(f"[LLM] [OK] Evaluated quiz via Gemini")
+                    return result
+            except Exception as e:
+                print(f"[LLM] Gemini evaluation error: {e}, using local grading")
+
+        # Local exact-match grading
+        return self._evaluate_local(questions, given_answers, current_mastery)
+
+    # ── OpenAI Implementation ────────────────────────────────────────
+
+    def _call_openai_quiz(
         self,
         topic: str,
         chunks: List[Dict[str, Any]],
+        mastery_score: float,
         difficulty: float,
         count: int
     ) -> Optional[List[Dict[str, Any]]]:
-        """Direct HTTP call to Google Gemini API (gemini-1.5-flash / gemini-2.0-flash)."""
-        context_text = "\n\n".join([f"[{c.get('chunk_id', 'chunk')}] {c.get('snippet', '')}" for c in chunks])
-        prompt = f"""You are Cognivue's AI learning tutor. Using the retrieved lecture context below, generate {count} high-quality assessment questions for the topic '{topic}'.
-Target difficulty level: {difficulty:.2f} (0.0=easy, 1.0=advanced).
+        """Generate quiz questions via OpenAI GPT-4o-mini with RAG context."""
+        context_text = "\n\n".join([
+            f"[{c.get('chunk_id', 'chunk')}] (similarity={c.get('similarity', 0):.3f}) {c.get('snippet', '')}"
+            for c in chunks
+        ])
 
-Context chunks:
+        system_prompt = """You are Cognivue's AI learning assessment engine. You generate rigorous, pedagogically-grounded quiz questions based strictly on provided lecture transcript chunks retrieved via RAG vector search.
+
+Rules:
+- Questions MUST test understanding of concepts from the provided context chunks
+- Each question must have exactly 4 choices with only one correct answer
+- The "why" field must explain WHY the answer is correct, citing specific concepts from the context
+- Difficulty scales from 0.0 (basic recall) to 1.0 (advanced synthesis/application)
+- At difficulty > 0.6, include questions that require combining multiple concepts
+- At difficulty < 0.4, focus on direct comprehension and terminology
+- NEVER generate trivially obvious or trick questions
+- Return ONLY a valid JSON array, no markdown formatting"""
+
+        user_prompt = f"""Generate exactly {count} adaptive assessment questions for the topic "{topic}".
+
+Learner Profile:
+- Current mastery score: {mastery_score}/100
+- Target difficulty: {difficulty:.2f} (0.0=basic recall, 1.0=advanced synthesis)
+- {"Focus on foundational concepts" if difficulty < 0.4 else "Focus on application and analysis" if difficulty < 0.7 else "Focus on synthesis, evaluation, and edge cases"}
+
+Retrieved RAG Context Chunks:
 {context_text}
 
-Return strictly a JSON array of question objects adhering to this schema:
+Return a JSON array of exactly {count} question objects:
 [
   {{
-    "q": "Question prompt text",
+    "q": "Clear, specific question text that tests understanding",
     "choices": ["Option A", "Option B", "Option C", "Option D"],
-    "answer": "Option B",
-    "why": "Detailed pedagogical explanation citing why the answer is correct based on the context."
+    "answer": "The exact text of the correct option",
+    "why": "Pedagogical explanation of why this is correct, referencing the context"
   }}
-]
-Do not include markdown code block ticks, only valid JSON.
-"""
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.gemini_api_key}"
-        headers = {"Content-Type": "application/json"}
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "response_mime_type": "application/json",
-                "temperature": 0.4
-            }
-        }
+]"""
 
-        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=12) as response:
-            res_data = json.loads(response.read().decode("utf-8"))
-            raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
-            questions = json.loads(raw_text)
-            if isinstance(questions, list) and len(questions) > 0:
-                return questions
+        return self._openai_request(system_prompt, user_prompt)
+
+    def _call_openai_evaluate(
+        self,
+        questions: List[Dict[str, Any]],
+        given_answers: List[str],
+        current_mastery: float
+    ) -> Optional[Dict[str, Any]]:
+        """Evaluate quiz answers via OpenAI with detailed pedagogical feedback."""
+        qa_pairs = []
+        for i, (q, ans) in enumerate(zip(questions, given_answers)):
+            qa_pairs.append(f"Q{i+1}: {q.get('q', '')}\nCorrect Answer: {q.get('answer', '')}\nStudent Answer: {ans}")
+
+        system_prompt = """You are Cognivue's AI assessment grader. Evaluate student quiz answers with detailed pedagogical feedback. Be fair but rigorous — partial credit is acceptable for answers that demonstrate understanding even if not exact matches."""
+
+        user_prompt = f"""Grade these quiz answers. Current mastery: {current_mastery}/100.
+
+{chr(10).join(qa_pairs)}
+
+Return a JSON object:
+{{
+  "score": <percentage 0-100>,
+  "correct_count": <integer>,
+  "total_questions": {len(questions)},
+  "evaluations": [
+    {{
+      "question": "question text",
+      "given_answer": "student's answer",
+      "expected_answer": "correct answer",
+      "is_correct": true/false,
+      "explanation": "Why correct/incorrect, what the student should understand"
+    }}
+  ],
+  "previous_mastery": {current_mastery},
+  "new_mastery": <calculated new mastery>,
+  "mastery_delta": <change in mastery>,
+  "feedback_summary": "Overall performance summary with specific study recommendations"
+}}"""
+
+        result = self._openai_request(system_prompt, user_prompt, expect_object=True)
+        if result and isinstance(result, dict):
+            return result
         return None
 
-    def _call_openai_rag(
+    def _openai_request(
         self,
-        topic: str,
-        chunks: List[Dict[str, Any]],
-        difficulty: float,
-        count: int
-    ) -> Optional[List[Dict[str, Any]]]:
-        """Direct HTTP call to OpenAI API (gpt-4o-mini)."""
-        context_text = "\n\n".join([f"[{c.get('chunk_id', 'chunk')}] {c.get('snippet', '')}" for c in chunks])
-        system_prompt = "You are Cognivue's AI learning companion. You generate rigorous assessment questions grounded strictly in provided lecture transcripts. Output valid JSON only."
-        user_prompt = f"""Generate {count} multiple choice questions for '{topic}' with difficulty {difficulty:.2f}.
-Context:
-{context_text}
-
-JSON Schema:
-[
-  {{
-    "q": "Question",
-    "choices": ["Choice 1", "Choice 2", "Choice 3", "Choice 4"],
-    "answer": "Choice 1",
-    "why": "Explanation"
-  }}
-]
-"""
+        system_prompt: str,
+        user_prompt: str,
+        expect_object: bool = False
+    ) -> Any:
+        """Make a direct HTTP request to OpenAI API."""
         url = "https://api.openai.com/v1/chat/completions"
         headers = {
             "Content-Type": "application/json",
@@ -277,22 +230,142 @@ JSON Schema:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.3
+            "response_format": {"type": "json_object"} if expect_object else {"type": "text"},
+            "temperature": 0.35,
+            "max_tokens": 4096,
+        }
+
+        # For array responses, we need json_object wrapping
+        if not expect_object:
+            payload["response_format"] = {"type": "text"}
+
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST"
+        )
+
+        with urllib.request.urlopen(req, timeout=30) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            content = res_data["choices"][0]["message"]["content"]
+
+            # Clean markdown code fences if present
+            content = content.strip()
+            if content.startswith("```"):
+                content = content.split("\n", 1)[1] if "\n" in content else content[3:]
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+
+            parsed = json.loads(content)
+
+            if expect_object:
+                if isinstance(parsed, dict):
+                    # Handle wrapper like {"questions": [...]}
+                    if "questions" in parsed and isinstance(parsed["questions"], list):
+                        return parsed
+                    return parsed
+            else:
+                if isinstance(parsed, list):
+                    return parsed
+                if isinstance(parsed, dict) and "questions" in parsed:
+                    return parsed["questions"]
+
+            return parsed
+
+    # ── Gemini Implementation ────────────────────────────────────────
+
+    def _call_gemini_quiz(
+        self,
+        topic: str,
+        chunks: List[Dict[str, Any]],
+        mastery_score: float,
+        difficulty: float,
+        count: int
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Generate quiz questions via Google Gemini with RAG context."""
+        context_text = "\n\n".join([
+            f"[{c.get('chunk_id', 'chunk')}] (sim={c.get('similarity', 0):.3f}) {c.get('snippet', '')}"
+            for c in chunks
+        ])
+
+        prompt = f"""You are Cognivue's AI learning tutor. Generate {count} high-quality adaptive quiz questions for "{topic}".
+
+Learner mastery: {mastery_score}/100. Target difficulty: {difficulty:.2f}.
+{"Focus on recall" if difficulty < 0.4 else "Focus on application" if difficulty < 0.7 else "Focus on synthesis and edge cases"}.
+
+Retrieved lecture transcript context:
+{context_text}
+
+Return a JSON array:
+[
+  {{
+    "q": "Question text",
+    "choices": ["A", "B", "C", "D"],
+    "answer": "Correct choice text",
+    "why": "Explanation citing the context"
+  }}
+]"""
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={self.gemini_api_key}"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "response_mime_type": "application/json",
+                "temperature": 0.4
+            }
         }
 
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=12) as response:
+        with urllib.request.urlopen(req, timeout=20) as response:
             res_data = json.loads(response.read().decode("utf-8"))
-            content = res_data["choices"][0]["message"]["content"]
-            parsed = json.loads(content)
-            if isinstance(parsed, list):
-                return parsed
-            elif isinstance(parsed, dict) and "questions" in parsed:
-                return parsed["questions"]
+            raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+            questions = json.loads(raw_text)
+            if isinstance(questions, list) and len(questions) > 0:
+                return questions
         return None
 
-    def _generate_local_rag(
+    def _call_gemini_evaluate(
+        self,
+        questions: List[Dict[str, Any]],
+        given_answers: List[str],
+        current_mastery: float
+    ) -> Optional[Dict[str, Any]]:
+        """Evaluate quiz via Gemini."""
+        qa_pairs = []
+        for i, (q, ans) in enumerate(zip(questions, given_answers)):
+            qa_pairs.append(f"Q{i+1}: {q.get('q', '')}\nCorrect: {q.get('answer', '')}\nStudent: {ans}")
+
+        prompt = f"""Grade these quiz answers. Current mastery: {current_mastery}/100.
+
+{chr(10).join(qa_pairs)}
+
+Return JSON object with: score (0-100), correct_count, total_questions, evaluations array (question, given_answer, expected_answer, is_correct, explanation), previous_mastery, new_mastery, mastery_delta, feedback_summary."""
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={self.gemini_api_key}"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "response_mime_type": "application/json",
+                "temperature": 0.2
+            }
+        }
+
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=20) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+            result = json.loads(raw_text)
+            if isinstance(result, dict):
+                return result
+        return None
+
+    # ── Local Fallback ───────────────────────────────────────────────
+
+    def _generate_local_quiz(
         self,
         topic: str,
         chunks: List[Dict[str, Any]],
@@ -300,76 +373,52 @@ JSON Schema:
         count: int
     ) -> List[Dict[str, Any]]:
         """
-        Intelligent local RAG generator synthesizing grounded questions from domain chunks.
+        Local RAG-grounded quiz generator — synthesizes questions directly from
+        retrieved transcript chunks. Used only when no API key is configured.
         """
-        # Match from known bank if available
-        matched_bank = []
-        for bank_topic, q_list in TOPIC_QUESTION_BANK.items():
-            if bank_topic.lower() in topic.lower() or topic.lower() in bank_topic.lower():
-                matched_bank = list(q_list)
-                break
-
-        if matched_bank:
-            random.shuffle(matched_bank)
-            selected = matched_bank[:count]
-            if len(selected) < count and chunks:
-                for c in chunks:
-                    if len(selected) >= count:
-                        break
-                    snippet = c.get("snippet", "")
-                    selected.append({
-                        "q": f"Based on the transcript section at {c.get('timestamp', '00:00')}, what principle is established regarding {topic}?",
-                        "choices": [
-                            f"Core operational rule: {snippet[:75]}...",
-                            "The parameter values must be randomized uniformly",
-                            "Data normalization is bypassed in all stages",
-                            "The computational cost scales exponentially with constant factor"
-                        ],
-                        "answer": f"Core operational rule: {snippet[:75]}...",
-                        "why": f"Cited directly from {c.get('chunk_id', 'chunk')}: '{snippet}'."
-                    })
-            return selected[:count]
-
-        # Dynamic synthesis from retrieved RAG chunks
         synthesized: List[Dict[str, Any]] = []
+
         for i, c in enumerate(chunks[:count]):
             snippet = c.get("snippet", "")
+            words = snippet.split()
+
+            # Extract a key phrase from the snippet for distractor generation
+            key_phrase = " ".join(words[:12]) if len(words) > 12 else snippet
+
             synthesized.append({
-                "q": f"According to the lecture transcript on {topic}, which principle applies?",
+                "q": f"Based on the lecture content for {topic}, which of the following statements is accurate?",
                 "choices": [
-                    f"Verified principle: {snippet[:80]}...",
-                    "The model assumes infinite variance across all training splits",
-                    "Feature values are discarded prior to boundary determination",
-                    "Optimization converges in negative iterations"
+                    f"{snippet[:120]}{'...' if len(snippet) > 120 else ''}",
+                    f"The {topic} algorithm requires O(n!) time complexity in all cases",
+                    f"All parameters in {topic} are determined by random initialization only",
+                    f"The mathematical foundation of {topic} has been disproven in recent literature"
                 ],
-                "answer": f"Verified principle: {snippet[:80]}...",
-                "why": f"Derived from {c.get('chunk_id', 'context chunk')} ({c.get('course', 'Course')}): '{snippet}'."
+                "answer": f"{snippet[:120]}{'...' if len(snippet) > 120 else ''}",
+                "why": f"This is directly stated in the lecture transcript (chunk {c.get('chunk_id', 'unknown')}, similarity {c.get('similarity', 0):.3f}): \"{snippet}\""
             })
 
         if not synthesized:
             synthesized.append({
-                "q": f"What is the foundational requirement for mastering {topic}?",
+                "q": f"What is the foundational requirement for understanding {topic}?",
                 "choices": [
-                    "Synthesizing theoretical foundations with empirical application",
+                    "Building theoretical foundations with empirical application",
                     "Memorizing isolated terminology without context",
                     "Disregarding prerequisite mathematical assumptions",
-                    "Restricting model evaluation to the training set only"
+                    "Restricting evaluation to the training set only"
                 ],
-                "answer": "Synthesizing theoretical foundations with empirical application",
-                "why": "Retention and comprehension require deep retrieval practice and structured mental models."
+                "answer": "Building theoretical foundations with empirical application",
+                "why": "Deep comprehension requires connecting theory to practice through structured retrieval."
             })
 
-        return synthesized
+        return synthesized[:count]
 
-    def evaluate_quiz(
+    def _evaluate_local(
         self,
         questions: List[Dict[str, Any]],
         given_answers: List[str],
         current_mastery: float
     ) -> Dict[str, Any]:
-        """
-        Evaluates student responses, produces detailed feedback, and computes mastery score update.
-        """
+        """Local exact-match evaluation with mastery update."""
         results = []
         correct_count = 0
 
@@ -377,7 +426,10 @@ JSON Schema:
             expected = q.get("answer", "")
             is_correct = (
                 given.strip().lower() == expected.strip().lower() or
-                (len(given) > 10 and (given.lower() in expected.lower() or expected.lower() in given.lower()))
+                (len(given) > 10 and (
+                    given.strip().lower() in expected.strip().lower() or
+                    expected.strip().lower() in given.strip().lower()
+                ))
             )
             if is_correct:
                 correct_count += 1
@@ -387,13 +439,11 @@ JSON Schema:
                 "given_answer": given,
                 "expected_answer": expected,
                 "is_correct": is_correct,
-                "explanation": q.get("why", "")
+                "explanation": q.get("why", "Review the lecture transcript for this concept.")
             })
 
         total = len(questions) or 1
         score_pct = round((correct_count / total) * 100, 1)
-
-        # Update mastery
         mastery_info = compute_mastery_update(score_pct, current_mastery)
 
         return {
@@ -407,12 +457,12 @@ JSON Schema:
             "feedback_summary": (
                 "Outstanding comprehension! Concepts solidified."
                 if score_pct >= 80
-                else "Good effort. Review the specific explanations on miss-identified concepts."
+                else "Good effort. Review the explanations on missed concepts."
                 if score_pct >= 50
-                else "Needs reinforcement. Recommendation added to your study plan to review transcript chunks."
+                else "Needs reinforcement. A study block has been added to your plan."
             )
         }
 
 
-# Global Singleton LLM Service
+# Global Singleton
 llm_service = LLMService()
