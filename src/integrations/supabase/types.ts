@@ -14,7 +14,236 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      activity_log: {
+        Row: {
+          course_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json
+        }
+        Insert: {
+          course_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json
+        }
+        Update: {
+          course_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_log_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      courses: {
+        Row: {
+          completion_pct: number
+          created_at: string
+          id: string
+          overall_mastery: number
+          platform: string
+          thumbnail_url: string | null
+          title: string
+        }
+        Insert: {
+          completion_pct?: number
+          created_at?: string
+          id?: string
+          overall_mastery?: number
+          platform: string
+          thumbnail_url?: string | null
+          title: string
+        }
+        Update: {
+          completion_pct?: number
+          created_at?: string
+          id?: string
+          overall_mastery?: number
+          platform?: string
+          thumbnail_url?: string | null
+          title?: string
+        }
+        Relationships: []
+      }
+      quizzes: {
+        Row: {
+          completed_at: string
+          course_id: string | null
+          id: string
+          question_type: string
+          questions: Json
+          score: number
+          topic_id: string | null
+        }
+        Insert: {
+          completed_at?: string
+          course_id?: string | null
+          id?: string
+          question_type: string
+          questions?: Json
+          score?: number
+          topic_id?: string | null
+        }
+        Update: {
+          completed_at?: string
+          course_id?: string | null
+          id?: string
+          question_type?: string
+          questions?: Json
+          score?: number
+          topic_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quizzes_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quizzes_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recommendations: {
+        Row: {
+          created_at: string
+          estimated_minutes: number
+          id: string
+          impact_score: number
+          reasoning: string
+          topic_id: string | null
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          estimated_minutes?: number
+          id?: string
+          impact_score?: number
+          reasoning?: string
+          topic_id?: string | null
+          type: string
+        }
+        Update: {
+          created_at?: string
+          estimated_minutes?: number
+          id?: string
+          impact_score?: number
+          reasoning?: string
+          topic_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recommendations_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      study_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          scheduled_at: string
+          status: string
+          topic_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          scheduled_at: string
+          status?: string
+          topic_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          scheduled_at?: string
+          status?: string
+          topic_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "study_events_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      topics: {
+        Row: {
+          course_id: string
+          id: string
+          last_updated: string
+          mastery_score: number
+          minutes_on_section: number
+          quiz_perf_pct: number
+          revisit_frequency_pct: number
+          revisits: number
+          time_on_section_pct: number
+          title: string
+          trend_delta: number
+        }
+        Insert: {
+          course_id: string
+          id?: string
+          last_updated?: string
+          mastery_score?: number
+          minutes_on_section?: number
+          quiz_perf_pct?: number
+          revisit_frequency_pct?: number
+          revisits?: number
+          time_on_section_pct?: number
+          title: string
+          trend_delta?: number
+        }
+        Update: {
+          course_id?: string
+          id?: string
+          last_updated?: string
+          mastery_score?: number
+          minutes_on_section?: number
+          quiz_perf_pct?: number
+          revisit_frequency_pct?: number
+          revisits?: number
+          time_on_section_pct?: number
+          title?: string
+          trend_delta?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topics_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
