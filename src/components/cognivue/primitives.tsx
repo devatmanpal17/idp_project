@@ -33,9 +33,9 @@ export function PanelHeader({
   className,
 }: {
   title: string;
-  subtitle?: string;
-  action?: ReactNode;
-  className?: string;
+  subtitle?: string | undefined;
+  action?: ReactNode | undefined;
+  className?: string | undefined;
 }) {
   return (
     <div
@@ -113,14 +113,14 @@ export function StatCard({
   raw,
 }: {
   label: string;
-  value?: number;
-  suffix?: string;
-  decimals?: number;
-  hint?: string;
-  footer?: ReactNode;
-  icon?: ReactNode;
-  tone?: "default" | "warn" | "positive" | "primary";
-  raw?: string;
+  value?: number | undefined;
+  suffix?: string | undefined;
+  decimals?: number | undefined;
+  hint?: string | undefined;
+  footer?: ReactNode | undefined;
+  icon?: ReactNode | undefined;
+  tone?: "default" | "warn" | "positive" | "primary" | undefined;
+  raw?: string | undefined;
 }) {
   const toneClass =
     tone === "warn"
@@ -194,7 +194,7 @@ export function SignalBar({
   quiz: number;
   time: number;
   revisit: number;
-  className?: string;
+  className?: string | undefined;
 }) {
   const parts = [
     { v: quiz * SIGNAL_WEIGHTS.quiz, cls: "bg-primary" },
@@ -222,8 +222,8 @@ export function Meter({
   className,
 }: {
   value: number;
-  tone?: "primary" | "warn" | "accent" | "muted";
-  className?: string;
+  tone?: "primary" | "warn" | "accent" | "muted" | undefined;
+  className?: string | undefined;
 }) {
   const cls =
     tone === "warn"
@@ -247,7 +247,7 @@ export function Meter({
 
 /* ------------------------------------------------------------------ */
 
-export function ChartSkeleton({ height = 240, bars = 12 }: { height?: number; bars?: number }) {
+export function ChartSkeleton({ height = 240, bars = 12 }: { height?: number | undefined; bars?: number }) {
   return (
     <div className="flex items-end gap-1.5 px-4 py-4" style={{ height }}>
       {Array.from({ length: bars }).map((_, i) => (
@@ -284,10 +284,10 @@ export function EmptyState({
   hint,
   action,
 }: {
-  icon?: ReactNode;
+  icon?: ReactNode | undefined;
   title: string;
-  hint?: string;
-  action?: ReactNode;
+  hint?: string | undefined;
+  action?: ReactNode | undefined;
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
@@ -307,10 +307,10 @@ export function PageHeader({
   description,
   action,
 }: {
-  eyebrow?: string;
+  eyebrow?: string | undefined;
   title: string;
-  description?: string;
-  action?: ReactNode;
+  description?: string | undefined;
+  action?: ReactNode | undefined;
 }) {
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
@@ -338,9 +338,9 @@ export function ChartTooltipBox({
   payload,
   label,
 }: {
-  active?: boolean;
-  payload?: Array<{ name?: string; value?: number | string; color?: string }>;
-  label?: string | number;
+  active?: boolean | undefined;
+  payload?: Array<{ name?: string | undefined; value?: number | string | undefined; color?: string }> | undefined;
+  label?: string | number | undefined;
 }) {
   if (!active || !payload?.length) return null;
   return (
