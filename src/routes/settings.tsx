@@ -158,7 +158,7 @@ function SettingsScreen() {
               <div className="mt-1 flex items-center justify-between text-muted-foreground">
                 <span>Active Provider:</span>
                 <span className="font-mono text-foreground font-semibold">
-                  {healthInfo?.active_ai_provider || aiProvider}
+                  {String(healthInfo?.["active_ai_provider"] ?? aiProvider)}
                 </span>
               </div>
             </div>

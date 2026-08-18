@@ -278,8 +278,8 @@ function OverviewScreen() {
           />
           <div className="divide-y divide-border p-2">
             {activityLog.slice(0, 5).map((act) => {
-              const meta = act.metadata as Record<string, string | number | undefined>;
-              const topicName = (meta.topic as string) || "Core Module";
+              const meta = (act.metadata ?? {}) as Record<string, string | number | undefined>;
+              const topicName = (meta["topic"] as string) || "Core Module";
               return (
                 <div key={act.id} className="flex items-center justify-between gap-3 p-3">
                   <div className="flex items-center gap-3">
@@ -298,9 +298,9 @@ function OverviewScreen() {
                         <span className="font-normal text-muted-foreground">{topicName}</span>
                       </div>
                       <div className="num text-[10px] text-muted-foreground">
-                        {meta.score !== undefined && `Score: ${meta.score}%  · `}
-                        {meta.revisits !== undefined && `Revisits: ${meta.revisits}  · `}
-                        {meta.delta !== undefined && `Mastery Δ: +${meta.delta}%  · `}
+                        {meta["score"] !== undefined && `Score: ${meta["score"]}%  · `}
+                        {meta["revisits"] !== undefined && `Revisits: ${meta["revisits"]}  · `}
+                        {meta["delta"] !== undefined && `Mastery Δ: +${meta["delta"]}%  · `}
                         {relativeTime(act.created_at)}
                       </div>
                     </div>

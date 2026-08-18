@@ -74,7 +74,7 @@ function ExtensionSimulatorScreen() {
     const interval = setInterval(() => {
       setTranscriptIndex((prev) => {
         const next = (prev + 1) % SIMULATED_TRANSCRIPT_FEED.length;
-        const currentItem = SIMULATED_TRANSCRIPT_FEED[next];
+        const currentItem = SIMULATED_TRANSCRIPT_FEED[next] ?? SIMULATED_TRANSCRIPT_FEED[0]!;
         setLiveMastery(currentItem.mastery);
 
         // Send to backend stream API
@@ -92,7 +92,7 @@ function ExtensionSimulatorScreen() {
     return () => clearInterval(interval);
   }, [isPlaying]);
 
-  const currentSegment = SIMULATED_TRANSCRIPT_FEED[transcriptIndex];
+  const currentSegment = SIMULATED_TRANSCRIPT_FEED[transcriptIndex] ?? SIMULATED_TRANSCRIPT_FEED[0]!;
 
   return (
     <div className="space-y-6">
