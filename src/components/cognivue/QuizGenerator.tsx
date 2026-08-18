@@ -1,147 +1,173 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, Cpu, Database, Gauge, Loader2, Sparkles, Wand2 } from "lucide-react";
+import {
+  Check,
+  Cpu,
+  Database,
+  Gauge,
+  Loader2,
+  Sparkles,
+  Wand2,
+  CheckCircle2,
+  XCircle,
+  ArrowRight,
+  RotateCcw,
+  SendHorizontal,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Panel } from "./primitives";
+import {
+  generateRAGQuiz,
+  evaluateRAGQuiz,
+  type RAGQuizResponse,
+  type QuizEvaluationResult,
+} from "@/lib/ai-client";
 
-type Step = {
-  key: string;
-  label: string;
-  detail: string;
-  icon: typeof Database;
-  lines: string[];
+export type GeneratedQuestion = {
+  q: string;
+  choices: string[];
+  answer: string;
+  why: string;
 };
 
-const STEPS: Step[] = [
-  {
-    key: "retrieve",
-    label: "Retrieving context chunks",
-    detail: "vector search · top_k=6 · cosine",
-    icon: Database,
-    lines: [
-      "chunk_0417  sim=0.912  “…the kernel trick maps inputs implicitly…”",
-      "chunk_0419  sim=0.887  “…support vectors define the margin…”",
-      "chunk_0512  sim=0.841  “…soft-margin C controls tolerance…”",
-      "chunk_0388  sim=0.803  “…RBF vs polynomial kernels…”",
-    ],
-  },
-  {
-    key: "signals",
-    label: "Loading learner signals",
-    detail: "mastery · error history · dwell time",
-    icon: Gauge,
-    lines: [
-      "mastery_score      = 41",
-      "quiz_perf_pct      = 36   (weight 0.40)",
-      "time_on_section    = 48   (weight 0.35)",
-      "revisit_frequency  = 40   (weight 0.25)",
-      "recent_errors      = ['kernel_trick', 'margin_definition']",
-    ],
-  },
-  {
-    key: "calibrate",
-    label: "Calibrating difficulty",
-    detail: "target success rate 0.70",
-    icon: Cpu,
-    lines: [
-      "difficulty = clamp(mastery/100 + 0.15, 0.25, 0.85) → 0.56",
-      "mix        = { mcq: 3, short_answer: 1 }",
-      "focus      = concepts with error_recency < 7d",
-    ],
-  },
-  {
-    key: "generate",
-    label: "Generating questions",
-    detail: "structured output · schema-validated",
-    icon: Sparkles,
-    lines: [
-      "prompt_tokens = 2,184   context_chunks = 6",
-      "streaming completion…",
-      "validating against QuizSchema… ok",
-    ],
-  },
-];
-
-export type GeneratedQuestion = { q: string; choices: string[]; answer: string; why: string };
-
-const DEFAULT_QUESTIONS: GeneratedQuestion[] = [
-  {
-    q: "In a soft-margin SVM, increasing C causes the model to…",
-    choices: [
-      "Tolerate more margin violations",
-      "Penalise misclassification more heavily",
-      "Increase the number of kernels",
-      "Reduce the feature dimension",
-    ],
-    answer: "Penalise misclassification more heavily",
-    why: "C is the inverse regularisation strength: a large C pushes the optimiser toward a narrow margin with fewer violations.",
-  },
-  {
-    q: "Which statement about support vectors is true?",
-    choices: [
-      "Every training point is a support vector",
-      "Only points on or inside the margin affect the boundary",
-      "Support vectors are chosen at random",
-      "They are removed before training",
-    ],
-    answer: "Only points on or inside the margin affect the boundary",
-    why: "Removing non-support vectors leaves the learned hyperplane unchanged — that sparsity is the defining property of an SVM.",
-  },
-  {
-    q: "Short answer: why is the RBF kernel a reasonable default?",
-    choices: [],
-    answer: "It can model non-linear boundaries with a single width hyperparameter and behaves well without domain knowledge.",
-    why: "The RBF kernel corresponds to an infinite-dimensional feature space, so it can separate most datasets while exposing only gamma to tune.",
-  },
-];
+const STEP_ICONS: Record<string, typeof Database> = {
+  retrieve: Database,
+  signals: Gauge,
+  calibrate: Cpu,
+  generate: Sparkles,
+};
 
 export function QuizGenerator({
   topicTitle,
+  masteryScore = 41,
   compact = false,
-  questions = DEFAULT_QUESTIONS,
   onDone,
+  onMasteryUpdated,
 }: {
   topicTitle: string;
+  masteryScore?: number;
   compact?: boolean | undefined;
-  questions?: GeneratedQuestion[] | undefined;
   onDone?: (() => void) | undefined;
+  onMasteryUpdated?: ((newMastery: number) => void) | undefined;
 }) {
+  const [loading, setLoading] = useState(true);
+  const [quizData, setQuizData] = useState<RAGQuizResponse | null>(null);
   const [step, setStep] = useState(0);
-  const done = step >= STEPS.length;
+  const [mode, setMode] = useState<"generating" | "answering" | "results">("generating");
+
+  // User responses
+  const [userAnswers, setUserAnswers] = useState<string[]>([]);
+  const [evaluation, setEvaluation] = useState<QuizEvaluationResult | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Fetch from Python RAG backend
+  useEffect(() => {
+    let isMounted = true;
+    async function load() {
+      setLoading(true);
+      setStep(0);
+      setMode("generating");
+      setUserAnswers([]);
+      setEvaluation(null);
+
+      try {
+        const data = await generateRAGQuiz({
+          topic: topicTitle,
+          mastery_score: masteryScore,
+        });
+        if (isMounted) {
+          setQuizData(data);
+          setUserAnswers(new Array(data.questions.length).fill(""));
+        }
+      } catch (err) {
+        console.error("Quiz RAG generation error:", err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      isMounted = false;
+    };
+  }, [topicTitle, masteryScore]);
+
+  // Step ticker animation
+  const totalSteps = quizData?.telemetry_steps.length ?? 4;
+  const isStepsDone = step >= totalSteps;
 
   useEffect(() => {
-    if (done) {
+    if (loading || !quizData) return;
+    if (isStepsDone) {
       onDone?.();
       return;
     }
-    const t = setTimeout(() => setStep((s) => s + 1), 1150);
+    const t = setTimeout(() => setStep((s) => s + 1), 750);
     return () => clearTimeout(t);
-  }, [step, done, onDone]);
+  }, [step, isStepsDone, loading, quizData, onDone]);
 
-  const visible = useMemo(() => STEPS.slice(0, Math.min(step + 1, STEPS.length)), [step]);
+  const visibleSteps = useMemo(() => {
+    if (!quizData) return [];
+    return quizData.telemetry_steps.slice(0, Math.min(step + 1, totalSteps));
+  }, [quizData, step, totalSteps]);
+
+  const handleSelectChoice = (qIndex: number, choice: string) => {
+    setUserAnswers((prev) => {
+      const next = [...prev];
+      next[qIndex] = choice;
+      return next;
+    });
+  };
+
+  const handleSubmitQuiz = async () => {
+    if (!quizData) return;
+    setSubmitting(true);
+    try {
+      const res = await evaluateRAGQuiz({
+        topic: topicTitle,
+        questions: quizData.questions,
+        given_answers: userAnswers,
+        current_mastery: masteryScore,
+      });
+      setEvaluation(res);
+      setMode("results");
+      onMasteryUpdated?.(res.new_mastery);
+    } catch (err) {
+      console.error("Evaluation error:", err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className={cn("space-y-3", compact ? "text-[11px]" : "text-xs")}>
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <Wand2 className="h-3.5 w-3.5 text-primary" />
-        <span>
-          RAG pipeline · <span className="text-foreground">{topicTitle}</span>
-        </span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Wand2 className="h-3.5 w-3.5 text-primary" />
+          <span>
+            RAG pipeline · <span className="font-semibold text-foreground">{topicTitle}</span>
+          </span>
+        </div>
+        {quizData && (
+          <span className="num rounded bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
+            calibrated diff: {quizData.calibration.difficulty}
+          </span>
+        )}
       </div>
 
+      {/* RAG Telemetry Steps */}
       <div className="space-y-1.5">
-        {visible.map((s, i) => {
+        {visibleSteps.map((s, i) => {
           const complete = i < step;
-          const Icon = s.icon;
+          const Icon = STEP_ICONS[s.step] || Database;
           return (
             <motion.div
-              key={s.key}
+              key={s.step}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25 }}
+              transition={{ duration: 0.2 }}
               className={cn(
                 "rounded-md border border-border bg-surface-2 px-2.5 py-2",
-                !complete && "border-primary/30",
+                !complete && "border-primary/40 shadow-sm",
               )}
             >
               <div className="flex items-center gap-2">
@@ -161,8 +187,8 @@ export function QuizGenerator({
                     animate={{ height: "auto", opacity: 1 }}
                     className="num mt-1.5 space-y-0.5 overflow-hidden pl-6 text-[10px] leading-relaxed text-muted-foreground"
                   >
-                    {s.lines.map((l) => (
-                      <div key={l} className="truncate">
+                    {s.lines.map((l, idx) => (
+                      <div key={idx} className="truncate">
                         {l}
                       </div>
                     ))}
@@ -174,52 +200,192 @@ export function QuizGenerator({
         })}
       </div>
 
+      {/* Questions Section */}
       <AnimatePresence>
-        {done && (
+        {isStepsDone && quizData && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="space-y-2"
+            className="space-y-3 pt-1"
           >
-            <div className="label-xs">Generated questions</div>
-            {questions.map((question, i) => (
-              <Panel key={i} className="p-3">
-                <div className="flex gap-2">
-                  <span className="num text-[10px] text-muted-foreground">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <p className="text-[13px] font-medium leading-snug text-foreground">
-                      {question.q}
-                    </p>
-                    {question.choices.length > 0 ? (
-                      <ul className="space-y-1">
-                        {question.choices.map((c) => (
-                          <li
-                            key={c}
-                            className={cn(
-                              "rounded border border-border px-2 py-1 text-[11px]",
-                              c === question.answer
-                                ? "border-positive/40 bg-positive/8 text-positive"
-                                : "text-muted-foreground",
+            <div className="flex items-center justify-between">
+              <div className="label-xs text-foreground">
+                {mode === "results" ? "AI Evaluation & Score Breakdown" : "Interactive Assessment"}
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                {quizData.questions.length} questions generated
+              </div>
+            </div>
+
+            {/* Questions List */}
+            <div className="space-y-2.5">
+              {quizData.questions.map((question, qIdx) => {
+                const evalItem = evaluation?.evaluations[qIdx];
+                const selectedChoice = userAnswers[qIdx];
+
+                return (
+                  <Panel key={qIdx} className="p-3.5">
+                    <div className="flex gap-2.5">
+                      <span className="num text-[11px] font-semibold text-muted-foreground">
+                        {String(qIdx + 1).padStart(2, "0")}
+                      </span>
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <p className="text-[13px] font-medium leading-snug text-foreground">
+                          {question.q}
+                        </p>
+
+                        {/* Choices */}
+                        {question.choices && question.choices.length > 0 ? (
+                          <div className="grid gap-1.5">
+                            {question.choices.map((c) => {
+                              const isSelected = selectedChoice === c;
+                              const isCorrect = evalItem?.expected_answer === c;
+                              const isWrong = evalItem && isSelected && !evalItem.is_correct;
+
+                              let choiceClass =
+                                "border-border bg-surface hover:border-primary/50 text-foreground";
+                              if (mode === "results") {
+                                if (isCorrect) {
+                                  choiceClass =
+                                    "border-positive/50 bg-positive/10 text-positive font-medium";
+                                } else if (isWrong) {
+                                  choiceClass = "border-warn/50 bg-warn/10 text-warn";
+                                } else {
+                                  choiceClass = "border-border/50 opacity-60 text-muted-foreground";
+                                }
+                              } else if (isSelected) {
+                                choiceClass =
+                                  "border-primary bg-primary/10 text-primary font-medium";
+                              }
+
+                              return (
+                                <button
+                                  key={c}
+                                  type="button"
+                                  disabled={mode === "results"}
+                                  onClick={() => handleSelectChoice(qIdx, c)}
+                                  className={cn(
+                                    "flex w-full items-start gap-2 rounded border px-3 py-2 text-left text-[11px] transition-all",
+                                    choiceClass,
+                                  )}
+                                >
+                                  <span className="num mt-0.5 text-[10px] opacity-70">
+                                    {String.fromCharCode(65 + question.choices.indexOf(c))}.
+                                  </span>
+                                  <span className="flex-1">{c}</span>
+                                  {mode === "results" && isCorrect && (
+                                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-positive" />
+                                  )}
+                                  {mode === "results" && isWrong && (
+                                    <XCircle className="h-3.5 w-3.5 shrink-0 text-warn" />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          // Short Answer input
+                          <div className="space-y-1">
+                            <input
+                              type="text"
+                              disabled={mode === "results"}
+                              value={selectedChoice || ""}
+                              onChange={(e) => handleSelectChoice(qIdx, e.target.value)}
+                              placeholder="Type your explanation or answer..."
+                              className="w-full rounded border border-border bg-surface px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                            />
+                            {mode === "results" && (
+                              <div className="rounded border border-positive/30 bg-positive/5 p-2 text-[11px] text-positive">
+                                <span className="font-semibold">Model Answer:</span>{" "}
+                                {question.answer}
+                              </div>
                             )}
+                          </div>
+                        )}
+
+                        {/* Explanation in results mode */}
+                        {mode === "results" && question.why && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            className="rounded-md border border-border/80 bg-surface-2 p-2 text-[11px] leading-relaxed text-muted-foreground"
                           >
-                            {c}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div className="rounded border border-positive/40 bg-positive/8 px-2 py-1 text-[11px] text-positive">
-                        {question.answer}
+                            <span className="font-semibold text-foreground">
+                              Pedagogical Grounding:
+                            </span>{" "}
+                            {question.why}
+                          </motion.div>
+                        )}
                       </div>
-                    )}
-                    <p className="text-[11px] leading-relaxed text-muted-foreground">
-                      {question.why}
-                    </p>
+                    </div>
+                  </Panel>
+                );
+              })}
+            </div>
+
+            {/* Results / Submit Actions */}
+            {mode !== "results" ? (
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[11px] text-muted-foreground">
+                  {userAnswers.filter(Boolean).length} of {quizData.questions.length} answered
+                </span>
+                <button
+                  onClick={handleSubmitQuiz}
+                  disabled={submitting || userAnswers.filter(Boolean).length === 0}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-1.5 text-xs font-medium text-primary-foreground shadow transition hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {submitting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <SendHorizontal className="h-3.5 w-3.5" />
+                  )}
+                  Submit for AI Evaluation
+                </button>
+              </div>
+            ) : (
+              evaluation && (
+                <Panel className="border-primary/30 bg-primary/5 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="num text-xl font-bold text-foreground">
+                          {evaluation.score}%
+                        </span>
+                        <span className="num text-xs text-muted-foreground">
+                          ({evaluation.correct_count}/{evaluation.total_questions} correct)
+                        </span>
+                        <span
+                          className={cn(
+                            "num rounded px-2 py-0.5 text-xs font-semibold",
+                            evaluation.mastery_delta >= 0
+                              ? "bg-positive/20 text-positive"
+                              : "bg-warn/20 text-warn",
+                          )}
+                        >
+                          {evaluation.mastery_delta >= 0 ? "+" : ""}
+                          {evaluation.mastery_delta} Mastery
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {evaluation.feedback_summary}
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setMode("answering");
+                        setUserAnswers(new Array(quizData.questions.length).fill(""));
+                        setEvaluation(null);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface-2"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Retake
+                    </button>
                   </div>
-                </div>
-              </Panel>
-            ))}
+                </Panel>
+              )
+            )}
           </motion.div>
         )}
       </AnimatePresence>

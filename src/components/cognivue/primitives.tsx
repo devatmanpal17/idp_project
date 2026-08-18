@@ -202,7 +202,9 @@ export function SignalBar({
     { v: revisit * SIGNAL_WEIGHTS.revisit, cls: "bg-warn" },
   ];
   return (
-    <div className={cn("flex h-1.5 w-full gap-px overflow-hidden rounded-full bg-muted", className)}>
+    <div
+      className={cn("flex h-1.5 w-full gap-px overflow-hidden rounded-full bg-muted", className)}
+    >
       {parts.map((p, i) => (
         <motion.div
           key={i}
@@ -247,7 +249,13 @@ export function Meter({
 
 /* ------------------------------------------------------------------ */
 
-export function ChartSkeleton({ height = 240, bars = 12 }: { height?: number | undefined; bars?: number }) {
+export function ChartSkeleton({
+  height = 240,
+  bars = 12,
+}: {
+  height?: number | undefined;
+  bars?: number;
+}) {
   return (
     <div className="flex items-end gap-1.5 px-4 py-4" style={{ height }}>
       {Array.from({ length: bars }).map((_, i) => (
@@ -339,7 +347,9 @@ export function ChartTooltipBox({
   label,
 }: {
   active?: boolean | undefined;
-  payload?: Array<{ name?: string | undefined; value?: number | string | undefined; color?: string }> | undefined;
+  payload?:
+    | Array<{ name?: string | undefined; value?: number | string | undefined; color?: string }>
+    | undefined;
   label?: string | number | undefined;
 }) {
   if (!active || !payload?.length) return null;

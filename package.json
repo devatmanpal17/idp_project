@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
+    "dev:backend": "python -m uvicorn backend.main:app --port 8000 --reload",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",

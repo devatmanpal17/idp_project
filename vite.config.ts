@@ -10,17 +10,17 @@ export default defineConfig({
     tailwindcss(),
     tsConfigPaths({ projects: ["./tsconfig.json"] }),
     tanstackStart({
-      server: { entry: "server" }
+      server: { entry: "server" },
     }),
     nitro({
       preset: "cloudflare-module",
       output: {
         dir: "dist",
         serverDir: "dist/server",
-        publicDir: "dist/client"
-      }
+        publicDir: "dist/client",
+      },
     }),
-    react()
+    react(),
   ],
   resolve: {
     alias: { "@": `${process.cwd()}/src` },
@@ -30,8 +30,8 @@ export default defineConfig({
       "react/jsx-runtime",
       "react/jsx-dev-runtime",
       "@tanstack/react-query",
-      "@tanstack/query-core"
-    ]
+      "@tanstack/query-core",
+    ],
   },
   optimizeDeps: {
     include: [
@@ -39,10 +39,16 @@ export default defineConfig({
       "react-dom",
       "react-dom/client",
       "react/jsx-runtime",
-      "react/jsx-dev-runtime"
-    ]
+      "react/jsx-dev-runtime",
+    ],
   },
   server: {
-    port: 8080
-  }
+    port: 8080,
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
+    },
+  },
 });

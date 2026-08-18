@@ -146,8 +146,10 @@
   --sidebar-accent: oklch(0.93 0.006 260);
   --sidebar-accent-foreground: oklch(0.22 0.015 265);
   --sidebar-border: oklch(0.22 0.015 265 / 10%);
-  --shadow-panel-value: 0 1px 2px oklch(0.2 0.02 265 / 8%), 0 8px 20px -14px oklch(0.2 0.02 265 / 25%);
-  --shadow-float-value: 0 12px 40px -10px oklch(0.2 0.02 265 / 28%), 0 2px 6px oklch(0.2 0.02 265 / 10%);
+  --shadow-panel-value:
+    0 1px 2px oklch(0.2 0.02 265 / 8%), 0 8px 20px -14px oklch(0.2 0.02 265 / 25%);
+  --shadow-float-value:
+    0 12px 40px -10px oklch(0.2 0.02 265 / 28%), 0 2px 6px oklch(0.2 0.02 265 / 10%);
   --grid-line: oklch(0.22 0.015 265 / 6%);
 }
 
