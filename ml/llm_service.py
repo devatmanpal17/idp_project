@@ -1,6 +1,9 @@
 """
-Cognivue LLM Generation & Evaluation Service
-Supports Google Gemini, OpenAI, and Local Structured Generation Engine.
+Cognivue ML — LLM Service
+Multi-provider LLM generation and evaluation engine supporting:
+1. Google Gemini (1.5 / 2.0 Flash)
+2. OpenAI (GPT-4o-mini)
+3. Local Intelligent RAG Generator & Grader
 """
 
 import os
@@ -9,6 +12,8 @@ import random
 import urllib.request
 import urllib.error
 from typing import List, Dict, Any, Optional
+
+from .calibration import compute_mastery_update
 
 # Question library for zero-key local generation fallback, grounded in RAG contexts
 TOPIC_QUESTION_BANK: Dict[str, List[Dict[str, Any]]] = {
@@ -143,7 +148,7 @@ TOPIC_QUESTION_BANK: Dict[str, List[Dict[str, Any]]] = {
             "why": "Optimal substructure ensures the global optimum is composed of subproblem optima, and overlapping subproblems ensures solving and caching subproblems avoids exponential recomputation."
         }
     ]
-}
+};
 
 
 class LLMService:
@@ -227,7 +232,7 @@ Do not include markdown code block ticks, only valid JSON.
                 "temperature": 0.4
             }
         }
-        
+
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=12) as response:
             res_data = json.loads(response.read().decode("utf-8"))
@@ -275,7 +280,7 @@ JSON Schema:
             "response_format": {"type": "json_object"},
             "temperature": 0.3
         }
-        
+
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=12) as response:
             res_data = json.loads(response.read().decode("utf-8"))
@@ -303,11 +308,10 @@ JSON Schema:
             if bank_topic.lower() in topic.lower() or topic.lower() in bank_topic.lower():
                 matched_bank = list(q_list)
                 break
-                
+
         if matched_bank:
             random.shuffle(matched_bank)
             selected = matched_bank[:count]
-            # If we need more, synthesize from context chunks
             if len(selected) < count and chunks:
                 for c in chunks:
                     if len(selected) >= count:
@@ -341,7 +345,7 @@ JSON Schema:
                 "answer": f"Verified principle: {snippet[:80]}...",
                 "why": f"Derived from {c.get('chunk_id', 'context chunk')} ({c.get('course', 'Course')}): '{snippet}'."
             })
-            
+
         if not synthesized:
             synthesized.append({
                 "q": f"What is the foundational requirement for mastering {topic}?",
@@ -354,7 +358,7 @@ JSON Schema:
                 "answer": "Synthesizing theoretical foundations with empirical application",
                 "why": "Retention and comprehension require deep retrieval practice and structured mental models."
             })
-            
+
         return synthesized
 
     def evaluate_quiz(
@@ -368,17 +372,16 @@ JSON Schema:
         """
         results = []
         correct_count = 0
-        
+
         for q, given in zip(questions, given_answers):
             expected = q.get("answer", "")
-            # Clean string comparison
             is_correct = (
                 given.strip().lower() == expected.strip().lower() or
                 (len(given) > 10 and (given.lower() in expected.lower() or expected.lower() in given.lower()))
             )
             if is_correct:
                 correct_count += 1
-                
+
             results.append({
                 "question": q.get("q", ""),
                 "given_answer": given,
@@ -386,23 +389,21 @@ JSON Schema:
                 "is_correct": is_correct,
                 "explanation": q.get("why", "")
             })
-            
+
         total = len(questions) or 1
         score_pct = round((correct_count / total) * 100, 1)
-        
-        # Calculate mastery adjustment (Bayesian update inspired)
-        # delta = (score_pct - current_mastery) * 0.25
-        mastery_delta = round((score_pct - current_mastery) * 0.22, 1)
-        new_mastery = max(0, min(100, round(current_mastery + mastery_delta, 1)))
-        
+
+        # Update mastery
+        mastery_info = compute_mastery_update(score_pct, current_mastery)
+
         return {
             "score": score_pct,
             "correct_count": correct_count,
             "total_questions": total,
             "evaluations": results,
             "previous_mastery": current_mastery,
-            "new_mastery": new_mastery,
-            "mastery_delta": mastery_delta,
+            "new_mastery": mastery_info["new_mastery"],
+            "mastery_delta": mastery_info["mastery_delta"],
             "feedback_summary": (
                 "Outstanding comprehension! Concepts solidified."
                 if score_pct >= 80

@@ -4,8 +4,7 @@ Health check endpoint.
 
 import time
 from fastapi import APIRouter
-from ..services.rag_engine import rag_engine, KNOWLEDGE_BASE
-from ..services.llm_service import llm_service
+from ml import rag_engine, KNOWLEDGE_BASE, llm_service
 
 router = APIRouter()
 

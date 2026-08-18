@@ -5,8 +5,7 @@ RAG endpoints: retrieve, generate-quiz, evaluate-quiz, stream-transcript.
 import time
 from fastapi import APIRouter
 from ..models import RetrieveRequest, GenerateQuizRequest, EvaluateQuizRequest, StreamTranscriptRequest
-from ..services.rag_engine import rag_engine
-from ..services.llm_service import llm_service
+from ml import rag_engine, llm_service, calibrate_difficulty
 
 router = APIRouter()
 
@@ -41,7 +40,7 @@ def generate_quiz(req: GenerateQuizRequest):
     chunks = rag_engine.retrieve(query=req.topic, topic=req.topic, top_k=6)
 
     # 2. Calibrate difficulty
-    calibration = rag_engine.calibrate_difficulty(
+    calibration = calibrate_difficulty(
         mastery_score=req.mastery_score,
         error_count=len(req.recent_errors or [])
     )

@@ -10,14 +10,18 @@ lerna-debug.log*
 # Environment variables
 .env
 .env.*
+*.env
 
-node_modules
-dist
-dist-ssr
-.output
-.vinxi
-.tanstack/**
-.nitro
+# Dependencies & Build artifacts
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+dist-ssr/
+.output/
+.vinxi/
+.tanstack/
+.nitro/
 *.local
 
 # Wrangler / Cloudflare
@@ -27,7 +31,7 @@ dist-ssr
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
@@ -37,7 +41,11 @@ dist-ssr
 
 # Python
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
+*.pyd
+.pytest_cache/
 venv/
 .venv/
+env/

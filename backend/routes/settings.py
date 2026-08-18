@@ -4,7 +4,7 @@ AI configuration settings endpoint.
 
 from fastapi import APIRouter
 from ..models import AIConfigRequest
-from ..services.llm_service import llm_service
+from ml import llm_service
 
 router = APIRouter()
 
