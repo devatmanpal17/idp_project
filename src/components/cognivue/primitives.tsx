@@ -86,9 +86,9 @@ export function CountUp({
   className,
 }: {
   value: number;
-  decimals?: number;
-  suffix?: string;
-  className?: string;
+  decimals?: number | undefined;
+  suffix?: string | undefined;
+  className?: string | undefined;
 }) {
   const animated = useCountUp(value);
   return (
