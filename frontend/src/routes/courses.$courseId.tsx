@@ -12,7 +12,7 @@ import {
   Sparkles,
   Wand2,
 } from "lucide-react";
-import { coursesQuery, topicsQuery, PLATFORM_TINT } from "@/lib/cognivue";
+import { coursesQuery, topicsQuery, PLATFORM_TINT } from "@/lib/chaigaram";
 import {
   Panel,
   PanelHeader,
@@ -21,13 +21,13 @@ import {
   Meter,
   TrendArrow,
   chartAxis,
-} from "@/components/cognivue/primitives";
-import { QuizGenerator } from "@/components/cognivue/QuizGenerator";
+} from "@/components/chaigaram/primitives";
+import { QuizGenerator } from "@/components/chaigaram/QuizGenerator";
 
 export const Route = createFileRoute("/courses/$courseId")({
   head: () => ({
     meta: [
-      { title: "Course Details | Cognivue Insight" },
+      { title: "Course Details | ChaiGaram" },
       { name: "description", content: "Course module telemetry, signals, and mastery breakdown" },
     ],
   }),

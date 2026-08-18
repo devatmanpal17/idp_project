@@ -1,4 +1,4 @@
-# Cognivue Frontend
+# ChaiGaram Frontend
 
 The `frontend/` folder contains the React 19 + TanStack Router + Tailwind CSS application.
 

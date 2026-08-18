@@ -1,5 +1,5 @@
 """
-Cognivue Machine Learning & RAG Engine Package
+ChaiGaram Machine Learning & RAG Engine Package
 """
 
 from .rag_engine import rag_engine, RAGEngine

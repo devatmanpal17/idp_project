@@ -1,5 +1,5 @@
 /**
- * Cognivue AI / RAG Client
+ * ChaiGaram AI / RAG Client
  * Interfaces with the Python FastAPI AI backend for vector retrieval,
  * LLM quiz generation, grading, and transcript ingestion.
  */
@@ -20,7 +20,7 @@ export async function checkAIHealth() {
   } catch {
     return {
       status: "fallback",
-      service: "Cognivue Integrated Engine",
+      service: "ChaiGaram Integrated Engine",
       active_ai_provider: "local_rag_engine",
       indexed_chunks: 12480,
     };

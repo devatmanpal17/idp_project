@@ -21,7 +21,7 @@ import {
   Wand2,
   X,
 } from "lucide-react";
-import { coursesQuery, topicsQuery, SIGNAL_WEIGHTS, type Topic } from "@/lib/cognivue";
+import { coursesQuery, topicsQuery, SIGNAL_WEIGHTS, type Topic } from "@/lib/chaigaram";
 import {
   Panel,
   PanelHeader,
@@ -29,13 +29,13 @@ import {
   SignalBar,
   TrendArrow,
   chartAxis,
-} from "@/components/cognivue/primitives";
-import { QuizGenerator } from "@/components/cognivue/QuizGenerator";
+} from "@/components/chaigaram/primitives";
+import { QuizGenerator } from "@/components/chaigaram/QuizGenerator";
 
 export const Route = createFileRoute("/mastery")({
   head: () => ({
     meta: [
-      { title: "Topic Mastery | Cognivue Insight" },
+      { title: "Topic Mastery | ChaiGaram" },
       {
         name: "description",
         content:
@@ -192,11 +192,11 @@ function TopicMasteryScreen() {
               <div className="grid h-7 w-7 place-items-center rounded bg-primary/10 text-primary">
                 <Calculator className="h-4 w-4" />
               </div>
-              <h3 className="text-sm font-semibold text-foreground">Cognivue Mastery Formula</h3>
+              <h3 className="text-sm font-semibold text-foreground">ChaiGaram Mastery Formula</h3>
             </div>
 
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-              Unlike video completion alone, Cognivue computes true retention through continuous
+              Unlike video completion alone, ChaiGaram computes true retention through continuous
               Bayesian updates combining 3 weighted DOM signals:
             </p>
 

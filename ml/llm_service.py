@@ -1,5 +1,5 @@
 """
-Cognivue ML — LLM Service
+ChaiGaram ML — LLM Service
 Multi-provider LLM generation and evaluation engine.
 
 Priority order:
@@ -250,8 +250,8 @@ class LLMService:
                 print(f"[LLM] Gemini notice: {e} -> transitioning to adaptive RAG engine")
 
         # 3. High-Fidelity Domain RAG Demo Engine
-        self._last_provider_used = "CogniVue Adaptive RAG Engine"
-        print(f"[LLM] Using CogniVue Adaptive RAG Engine for '{topic}' (diff={difficulty:.2f})")
+        self._last_provider_used = "ChaiGaram Adaptive RAG Engine"
+        print(f"[LLM] Using ChaiGaram Adaptive RAG Engine for '{topic}' (diff={difficulty:.2f})")
         return self._generate_domain_rag_quiz(topic, context_chunks, difficulty, count)
 
     # ── Quiz Evaluation ──────────────────────────────────────────────
@@ -294,7 +294,7 @@ class LLMService:
             for c in chunks
         ])
 
-        system_prompt = """You are Cognivue's AI learning assessment engine. You generate rigorous, pedagogically-grounded quiz questions based strictly on provided lecture transcript chunks retrieved via RAG vector search.
+        system_prompt = """You are ChaiGaram's AI learning assessment engine. You generate rigorous, pedagogically-grounded quiz questions based strictly on provided lecture transcript chunks retrieved via RAG vector search.
 Return ONLY valid JSON array with format: [{"q": "...", "choices": ["A", "B", "C", "D"], "answer": "Exact text of correct choice", "why": "Explanation"}]"""
 
         user_prompt = f"""Generate {count} multiple choice questions for topic '{topic}'.
@@ -316,7 +316,7 @@ Context Chunks:
             for i, (q, ans) in enumerate(zip(questions, given_answers))
         ]
 
-        system_prompt = "You are Cognivue's AI assessment grader. Return JSON with score, correct_count, total_questions, evaluations array, previous_mastery, new_mastery, mastery_delta, feedback_summary."
+        system_prompt = "You are ChaiGaram's AI assessment grader. Return JSON with score, correct_count, total_questions, evaluations array, previous_mastery, new_mastery, mastery_delta, feedback_summary."
         user_prompt = f"Grade these answers. Current mastery: {current_mastery}.\n\n" + "\n\n".join(qa_pairs)
 
         return self._openai_request(system_prompt, user_prompt, expect_object=True)

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { ArrowDownRight, ArrowRight, ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SIGNAL_WEIGHTS, masteryBand } from "@/lib/cognivue";
+import { SIGNAL_WEIGHTS, masteryBand } from "@/lib/chaigaram";
 
 /* ------------------------------------------------------------------ */
 

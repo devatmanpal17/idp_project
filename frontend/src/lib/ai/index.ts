@@ -1,5 +1,5 @@
 /**
- * Cognivue AI module barrel export
+ * ChaiGaram AI module barrel export
  */
 
 export * from "./types";

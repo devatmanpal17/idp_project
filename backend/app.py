@@ -1,12 +1,12 @@
 """
-Cognivue AI Engine — FastAPI Application Factory
+ChaiGaram AI Engine — FastAPI Application Factory
 Loads .env from root, initializes CORS, registers route modules.
 """
 
 import os
 from pathlib import Path
 
-# Load .env from project root (cognivue-insight/.env)
+# Load .env from project root (chaigaram-insight/.env)
 _env_path = Path(__file__).resolve().parent.parent / ".env"
 if _env_path.exists():
     with open(_env_path) as f:
@@ -32,7 +32,7 @@ from .routes.recommendations import router as recommendations_router
 from .routes.settings import router as settings_router
 
 app = FastAPI(
-    title="Cognivue AI Engine",
+    title="ChaiGaram AI Engine",
     description="RAG vector search, LLM quiz generator, and learner signal intelligence.",
     version="2.0.0",
 )

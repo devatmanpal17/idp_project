@@ -1,5 +1,5 @@
 """
-Cognivue ML — Dynamic Educational Graph & Chart Generator
+ChaiGaram ML — Dynamic Educational Graph & Chart Generator
 Generates mathematical chart payloads:
 1. Vector Cosine Similarity distribution across retrieved chunks
 2. Item Response Theory (IRT) Characteristic Curve: P(theta) = 1 / (1 + exp(-a * (theta - b)))

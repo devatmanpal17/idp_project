@@ -1,5 +1,5 @@
 """
-Cognivue ML — RAG Vector Engine
+ChaiGaram ML — RAG Vector Engine
 Implements transcript chunking, TF-IDF vector indexing, and cosine similarity retrieval.
 """
 
@@ -107,7 +107,7 @@ class RAGEngine:
                 {
                     "chunk_id": f"chunk_gen_{i+1}",
                     "topic": topic or "Foundational Theory",
-                    "course": "Cognivue Knowledge Index",
+                    "course": "ChaiGaram Knowledge Index",
                     "timestamp": f"{i*5}:00",
                     "snippet": g["text"],
                     "similarity": round(0.88 - (i * 0.04), 3),

@@ -14,13 +14,13 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { Panel, PanelHeader } from "@/components/cognivue/primitives";
+import { Panel, PanelHeader } from "@/components/chaigaram/primitives";
 import { checkAIHealth, updateAIConfig } from "@/lib/ai-client";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
     meta: [
-      { title: "Settings | Cognivue Insight" },
+      { title: "Settings | ChaiGaram" },
       {
         name: "description",
         content:
@@ -290,7 +290,7 @@ function SettingsScreen() {
           </div>
 
           <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-            No audio or video streams are ever stored on Cognivue servers. The extension processes
+            No audio or video streams are ever stored on ChaiGaram servers. The extension processes
             text transcripts and interaction signals strictly in-memory for RAG vectorization and
             mastery telemetry.
           </p>

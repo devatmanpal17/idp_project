@@ -1,5 +1,5 @@
 /**
- * Cognivue — Domain Helper Functions
+ * ChaiGaram — Domain Helper Functions
  */
 
 export function masteryBand(score: number) {

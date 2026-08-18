@@ -32,7 +32,7 @@ import {
   activityQuery,
   EVENT_LABEL,
   relativeTime,
-} from "@/lib/cognivue";
+} from "@/lib/chaigaram";
 import {
   Panel,
   PanelHeader,
@@ -40,14 +40,14 @@ import {
   MasteryPill,
   chartAxis,
   ChartTooltipBox,
-} from "@/components/cognivue/primitives";
-import { QuizGenerator } from "@/components/cognivue/QuizGenerator";
+} from "@/components/chaigaram/primitives";
+import { QuizGenerator } from "@/components/chaigaram/QuizGenerator";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Overview | Cognivue Insight" },
-      { name: "description", content: "Cognivue Insight - Extension Control Room Overview" },
+      { title: "Overview | ChaiGaram" },
+      { name: "description", content: "ChaiGaram - Extension Control Room Overview" },
     ],
   }),
   component: OverviewScreen,
@@ -142,7 +142,7 @@ function OverviewScreen() {
         <Panel className="lg:col-span-2">
           <PanelHeader
             title="Completion vs. Mastery Gap"
-            subtitle="Video watch percentage vs. verified conceptual comprehension (the core Cognivue insight)"
+            subtitle="Video watch percentage vs. verified conceptual comprehension (the core ChaiGaram insight)"
           />
           <div className="p-4">
             <div className="h-[280px] w-full">

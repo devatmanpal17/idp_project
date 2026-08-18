@@ -1,6 +1,6 @@
-# CogniVue Insight — AI-Powered MOOC Mastery & Retention Platform
+# ChaiGaram — AI-Powered MOOC Mastery & Retention Platform
 
-A production-grade, 3-tier intelligent learning analytics and assessment engine. CogniVue tracks learner interactions across MOOC platforms (Udemy, Coursera, edX), quantifies multi-signal topic mastery, builds Ebbinghaus-based spaced repetition schedules, and generates adaptive RAG-grounded assessments with live telemetry.
+A production-grade, 3-tier intelligent learning analytics and assessment engine. ChaiGaram tracks learner interactions across MOOC platforms (Udemy, Coursera, edX), quantifies multi-signal topic mastery, builds Ebbinghaus-based spaced repetition schedules, and generates adaptive RAG-grounded assessments with live telemetry.
 
 ---
 
@@ -9,7 +9,7 @@ A production-grade, 3-tier intelligent learning analytics and assessment engine.
 The repository is segregated into three dedicated tiers:
 
 ```
-cognivue-insight/
+chaigaram-insight/
 ├── ml/            # Machine Learning & AI Core (RAG Vector Index, LLMs, Calibration)
 ├── backend/       # FastAPI REST API Backend Server
 └── frontend/      # React 19 + TanStack Router + Tailwind CSS UI Application

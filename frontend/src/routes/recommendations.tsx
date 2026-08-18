@@ -14,14 +14,14 @@ import {
   TrendingDown,
   Wand2,
 } from "lucide-react";
-import { recommendationsQuery, topicsQuery, coursesQuery } from "@/lib/cognivue";
-import { Panel, PanelHeader, MasteryPill } from "@/components/cognivue/primitives";
-import { QuizGenerator } from "@/components/cognivue/QuizGenerator";
+import { recommendationsQuery, topicsQuery, coursesQuery } from "@/lib/chaigaram";
+import { Panel, PanelHeader, MasteryPill } from "@/components/chaigaram/primitives";
+import { QuizGenerator } from "@/components/chaigaram/QuizGenerator";
 
 export const Route = createFileRoute("/recommendations")({
   head: () => ({
     meta: [
-      { title: "Recommendations | Cognivue Insight" },
+      { title: "Recommendations | ChaiGaram" },
       {
         name: "description",
         content: "AI-ranked smart recommendations and high-yield retrieval targets",

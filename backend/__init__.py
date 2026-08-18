@@ -1,3 +1,3 @@
 """
-Cognivue AI Backend Package
+ChaiGaram AI Backend Package
 """

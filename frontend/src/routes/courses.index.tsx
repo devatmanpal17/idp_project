@@ -1,13 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, ChevronRight, Clock, Flame, GraduationCap } from "lucide-react";
-import { coursesQuery, topicsQuery, PLATFORM_TINT } from "@/lib/cognivue";
-import { Panel, MasteryPill, Meter } from "@/components/cognivue/primitives";
+import { coursesQuery, topicsQuery, PLATFORM_TINT } from "@/lib/chaigaram";
+import { Panel, MasteryPill, Meter } from "@/components/chaigaram/primitives";
 
 export const Route = createFileRoute("/courses/")({
   head: () => ({
     meta: [
-      { title: "Courses | Cognivue Insight" },
+      { title: "Courses | ChaiGaram" },
       { name: "description", content: "Active courses and video-comprehension tracking" },
     ],
   }),

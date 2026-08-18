@@ -1,5 +1,5 @@
 /**
- * Cognivue — Domain Type Definitions
+ * ChaiGaram — Domain Type Definitions
  */
 
 export type Course = {

@@ -1,5 +1,5 @@
 /**
- * Cognivue domain module barrel re-export
+ * ChaiGaram domain module barrel re-export
  * (Maintained for backwards-compatible imports)
  */
 

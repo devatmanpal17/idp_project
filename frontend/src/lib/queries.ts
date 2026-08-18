@@ -1,5 +1,5 @@
 /**
- * Cognivue — React Query Options
+ * ChaiGaram — React Query Options
  */
 
 import { queryOptions } from "@tanstack/react-query";

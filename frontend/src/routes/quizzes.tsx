@@ -13,14 +13,14 @@ import {
   Wand2,
   XCircle,
 } from "lucide-react";
-import { quizzesQuery, topicsQuery, coursesQuery, relativeTime, type Quiz } from "@/lib/cognivue";
-import { Panel, PanelHeader, MasteryPill } from "@/components/cognivue/primitives";
-import { QuizGenerator } from "@/components/cognivue/QuizGenerator";
+import { quizzesQuery, topicsQuery, coursesQuery, relativeTime, type Quiz } from "@/lib/chaigaram";
+import { Panel, PanelHeader, MasteryPill } from "@/components/chaigaram/primitives";
+import { QuizGenerator } from "@/components/chaigaram/QuizGenerator";
 
 export const Route = createFileRoute("/quizzes")({
   head: () => ({
     meta: [
-      { title: "Quizzes | Cognivue Insight" },
+      { title: "Quizzes | ChaiGaram" },
       { name: "description", content: "AI RAG quiz generation, history, and assessment review" },
     ],
   }),

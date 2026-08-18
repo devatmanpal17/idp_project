@@ -1,5 +1,5 @@
 /**
- * Cognivue AI / RAG Types
+ * ChaiGaram AI / RAG Types
  */
 
 export type RAGChunk = {

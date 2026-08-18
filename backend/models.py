@@ -1,5 +1,5 @@
 """
-Pydantic request / response models for the Cognivue AI API.
+Pydantic request / response models for the ChaiGaram AI API.
 """
 
 from pydantic import BaseModel, Field

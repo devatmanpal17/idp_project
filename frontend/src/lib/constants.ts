@@ -1,5 +1,5 @@
 /**
- * Cognivue — Domain Constants
+ * ChaiGaram — Domain Constants
  */
 
 import type { StudyEvent } from "./types";

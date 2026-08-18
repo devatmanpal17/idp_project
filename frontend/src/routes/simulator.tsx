@@ -17,14 +17,14 @@ import {
   Volume2,
   Wand2,
 } from "lucide-react";
-import { Panel, MasteryPill, Meter } from "@/components/cognivue/primitives";
-import { QuizGenerator } from "@/components/cognivue/QuizGenerator";
+import { Panel, MasteryPill, Meter } from "@/components/chaigaram/primitives";
+import { QuizGenerator } from "@/components/chaigaram/QuizGenerator";
 import { streamSimulatorTranscript } from "@/lib/ai-client";
 
 export const Route = createFileRoute("/simulator")({
   head: () => ({
     meta: [
-      { title: "Extension Simulator | Cognivue Insight" },
+      { title: "Extension Simulator | ChaiGaram" },
       {
         name: "description",
         content: "Interactive Chrome extension overlay simulator on MOOC video player",
@@ -103,7 +103,7 @@ function ExtensionSimulatorScreen() {
             Chrome Extension Overlay Simulator
           </h1>
           <p className="text-xs text-muted-foreground">
-            Simulating the Cognivue client-side overlay injected directly into a MOOC video player
+            Simulating the ChaiGaram client-side overlay injected directly into a MOOC video player
             (Udemy / Coursera / edX).
           </p>
         </div>
@@ -172,7 +172,7 @@ function ExtensionSimulatorScreen() {
             <Maximize2 className="h-4 w-4 text-zinc-400" />
           </div>
 
-          {/* ---------------- FLOATING COGNIVUE OVERLAY UI ---------------- */}
+          {/* ---------------- FLOATING CHAIGARAM OVERLAY UI ---------------- */}
           <div className="absolute right-6 top-6 z-20 w-80">
             <motion.div
               layout
@@ -186,7 +186,7 @@ function ExtensionSimulatorScreen() {
                   </div>
                   <div>
                     <span className="font-display text-xs font-bold text-foreground">
-                      Cognivue Companion
+                      ChaiGaram Companion
                     </span>
                   </div>
                 </div>

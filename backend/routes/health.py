@@ -14,7 +14,7 @@ def health_check():
     total_chunks = len(rag_engine.all_chunks)
     return {
         "status": "online",
-        "service": "Cognivue AI/ML Engine",
+        "service": "ChaiGaram AI/ML Engine",
         "version": "2.0.0",
         "indexed_chunks": total_chunks,
         "topics_indexed": list(KNOWLEDGE_BASE.keys()),

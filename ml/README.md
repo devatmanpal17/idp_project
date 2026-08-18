@@ -1,4 +1,4 @@
-# Cognivue ML Engine
+# ChaiGaram ML Engine
 
 The `ml/` folder contains the Machine Learning, RAG vector retrieval, LLM generation, and adaptive difficulty calibration pipelines.
 

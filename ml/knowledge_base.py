@@ -1,5 +1,5 @@
 """
-Cognivue ML — Knowledge Base Corpus
+ChaiGaram ML — Knowledge Base Corpus
 Comprehensive MOOC lecture transcript corpus indexed by topic and course.
 """
 

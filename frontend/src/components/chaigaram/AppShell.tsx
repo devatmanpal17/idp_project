@@ -32,7 +32,7 @@ function useTheme() {
   const [light, setLight] = useState(false);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("cognivue-theme");
+    const stored = window.localStorage.getItem("chaigaram-theme");
     const isLight = stored === "light";
     setLight(isLight);
     document.documentElement.classList.toggle("light", isLight);
@@ -42,7 +42,7 @@ function useTheme() {
     setLight((prev) => {
       const next = !prev;
       document.documentElement.classList.toggle("light", next);
-      window.localStorage.setItem("cognivue-theme", next ? "light" : "dark");
+      window.localStorage.setItem("chaigaram-theme", next ? "light" : "dark");
       return next;
     });
   };
@@ -56,12 +56,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
-    setCollapsed(window.localStorage.getItem("cognivue-nav") === "collapsed");
+    setCollapsed(window.localStorage.getItem("chaigaram-nav") === "collapsed");
   }, []);
 
   const toggleNav = () =>
     setCollapsed((prev) => {
-      window.localStorage.setItem("cognivue-nav", prev ? "expanded" : "collapsed");
+      window.localStorage.setItem("chaigaram-nav", prev ? "expanded" : "collapsed");
       return !prev;
     });
 
@@ -79,7 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <div className="font-display text-sm font-semibold tracking-tight">Cognivue</div>
+              <div className="font-display text-sm font-semibold tracking-tight">ChaiGaram</div>
               <div className="num text-[10px] text-muted-foreground">v0.9.2 · build 431</div>
             </div>
           )}
@@ -148,7 +148,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div className="grid h-6 w-6 place-items-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary">
                 DP
               </div>
-              <span className="hidden sm:inline">devatman@cognivue.io</span>
+              <span className="hidden sm:inline">devatman@chaigaram.io</span>
             </div>
           </div>
         </header>

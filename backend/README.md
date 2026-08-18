@@ -1,6 +1,6 @@
-# Cognivue Backend Server
+# ChaiGaram Backend Server
 
-The `backend/` folder contains the FastAPI REST API layer for CogniVue.
+The `backend/` folder contains the FastAPI REST API layer for ChaiGaram.
 
 ## Structure
 

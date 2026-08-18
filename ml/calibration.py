@@ -1,5 +1,5 @@
 """
-Cognivue ML — Learner Signal Difficulty Calibration
+ChaiGaram ML — Learner Signal Difficulty Calibration
 Implements adaptive item calibration using mastery, error rates, dwell time, and Bayesian difficulty updating.
 """
 

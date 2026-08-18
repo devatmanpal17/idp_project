@@ -22,13 +22,13 @@ import {
   Sparkles,
   TrendingDown,
 } from "lucide-react";
-import { studyEventsQuery, topicsQuery, STUDY_EVENT_META, retentionCurve } from "@/lib/cognivue";
-import { Panel, PanelHeader, MasteryPill, chartAxis } from "@/components/cognivue/primitives";
+import { studyEventsQuery, topicsQuery, STUDY_EVENT_META, retentionCurve } from "@/lib/chaigaram";
+import { Panel, PanelHeader, MasteryPill, chartAxis } from "@/components/chaigaram/primitives";
 
 export const Route = createFileRoute("/study-plan")({
   head: () => ({
     meta: [
-      { title: "Study Plan | Cognivue Insight" },
+      { title: "Study Plan | ChaiGaram" },
       {
         name: "description",
         content: "Spaced-repetition study schedule & Ebbinghaus retention decay curve",
@@ -187,7 +187,7 @@ function StudyPlanScreen() {
             </div>
 
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-              Cognivue automatically pushes spaced-repetition study blocks and practice quiz
+              ChaiGaram automatically pushes spaced-repetition study blocks and practice quiz
               reminders directly to your primary calendar.
             </p>
 
