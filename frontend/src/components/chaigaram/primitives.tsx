@@ -15,7 +15,7 @@ export function Panel({
   return (
     <div
       className={cn(
-        "rounded-lg border border-border shadow-panel",
+        "rounded-xl border border-border/80 shadow-panel transition-all duration-200 hover:border-border-strong hover:shadow-float",
         tint ? "bg-surface-2" : "bg-surface",
         className,
       )}
@@ -40,7 +40,7 @@ export function PanelHeader({
   return (
     <div
       className={cn(
-        "flex items-start justify-between gap-4 border-b border-border px-4 py-3",
+        "flex items-start justify-between gap-4 border-b border-border/60 px-5 py-4",
         className,
       )}
     >

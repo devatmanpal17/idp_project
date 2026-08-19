@@ -19,9 +19,9 @@ import {
   Compass,
   Flame,
   GraduationCap,
-  Sparkles,
+  Cpu,
   TrendingUp,
-  Wand2,
+  Terminal,
 } from "lucide-react";
 import {
   coursesQuery,
@@ -98,8 +98,8 @@ function OverviewScreen() {
           onClick={() => setActiveQuizTopic("Support Vector Machines")}
           className="inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-xs font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90"
         >
-          <Wand2 className="h-4 w-4" />
-          Launch AI RAG Drill
+          <Terminal className="h-4 w-4" />
+          Initialize Diagnostic Drill
         </button>
       </div>
 
@@ -222,7 +222,7 @@ function OverviewScreen() {
         {/* Learn Next / AI Recommendations (1 col) */}
         <Panel>
           <PanelHeader
-            title="Learn Next · AI Ranked"
+            title="Priority Review Queue"
             subtitle="Top high-yield review opportunities"
             action={
               <Link
@@ -257,8 +257,8 @@ function OverviewScreen() {
                       onClick={() => setActiveQuizTopic(title)}
                       className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
                     >
-                      <Sparkles className="h-3 w-3" />
-                      Start Quiz
+                      <Cpu className="h-3 w-3" />
+                      Initialize
                     </button>
                   </div>
                 </div>
@@ -321,7 +321,7 @@ function OverviewScreen() {
         {/* Quick Quiz Generator Panel */}
         <Panel className="p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-foreground">Live AI Practice Drill</h3>
+            <h3 className="text-sm font-semibold text-foreground">Diagnostic Drill Environment</h3>
             {activeQuizTopic && (
               <button
                 onClick={() => setActiveQuizTopic(null)}
@@ -343,7 +343,7 @@ function OverviewScreen() {
           ) : (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <div className="grid h-10 w-10 place-items-center rounded-full bg-primary/10 text-primary">
-                <Wand2 className="h-5 w-5" />
+                <Terminal className="h-5 w-5" />
               </div>
               <p className="mt-3 text-xs font-medium text-foreground">Select a topic to drill</p>
               <p className="mt-1 text-[11px] text-muted-foreground">

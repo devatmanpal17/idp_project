@@ -386,7 +386,7 @@ function TopicMasteryScreen() {
               {/* RAG Practice Quiz on this Topic */}
               <div className="border-t border-border pt-4">
                 <h3 className="mb-3 text-xs font-semibold text-foreground">
-                  Live AI RAG Practice Drill
+                  Diagnostic Drill Environment
                 </h3>
                 <QuizGenerator
                   topicTitle={inspectTopic.title}

@@ -3,7 +3,6 @@
  */
 
 import { queryOptions } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import type {
   Course,
   Topic,
@@ -12,41 +11,49 @@ import type {
   Recommendation,
   ActivityEntry,
 } from "./types";
+import {
+  MOCK_COURSES,
+  MOCK_TOPICS,
+  MOCK_QUIZZES,
+  MOCK_STUDY_EVENTS,
+  MOCK_RECOMMENDATIONS,
+  MOCK_ACTIVITY,
+} from "./mockData";
 
-const table = (name: string) => supabase.from(name as never);
+// Simulate network delay for a more realistic feel
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function fetchAll<T>(name: string, order: string, ascending = true): Promise<T[]> {
-  const { data, error } = await table(name).select("*").order(order, { ascending });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as T[];
+async function fetchMock<T>(data: T[]): Promise<T[]> {
+  await delay(150);
+  return data;
 }
 
 export const coursesQuery = queryOptions({
   queryKey: ["courses"],
-  queryFn: () => fetchAll<Course>("courses", "created_at"),
+  queryFn: () => fetchMock<Course>(MOCK_COURSES),
 });
 
 export const topicsQuery = queryOptions({
   queryKey: ["topics"],
-  queryFn: () => fetchAll<Topic>("topics", "title"),
+  queryFn: () => fetchMock<Topic>(MOCK_TOPICS),
 });
 
 export const quizzesQuery = queryOptions({
   queryKey: ["quizzes"],
-  queryFn: () => fetchAll<Quiz>("quizzes", "completed_at", false),
+  queryFn: () => fetchMock<Quiz>(MOCK_QUIZZES),
 });
 
 export const studyEventsQuery = queryOptions({
   queryKey: ["study_events"],
-  queryFn: () => fetchAll<StudyEvent>("study_events", "scheduled_at"),
+  queryFn: () => fetchMock<StudyEvent>(MOCK_STUDY_EVENTS),
 });
 
 export const recommendationsQuery = queryOptions({
   queryKey: ["recommendations"],
-  queryFn: () => fetchAll<Recommendation>("recommendations", "impact_score", false),
+  queryFn: () => fetchMock<Recommendation>(MOCK_RECOMMENDATIONS),
 });
 
 export const activityQuery = queryOptions({
   queryKey: ["activity_log"],
-  queryFn: () => fetchAll<ActivityEntry>("activity_log", "created_at", false),
+  queryFn: () => fetchMock<ActivityEntry>(MOCK_ACTIVITY),
 });

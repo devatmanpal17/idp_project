@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  Activity,
+  Hexagon,
   BookOpen,
   CalendarClock,
   ChevronsLeft,
@@ -74,8 +74,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
       >
         <div className="flex h-14 items-center gap-2.5 px-4">
-          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary/15 text-primary ring-1 ring-primary/30">
-            <Activity className="h-4 w-4" />
+          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-surface-2 text-foreground border border-border">
+            <Hexagon className="h-4 w-4" />
           </div>
           {!collapsed && (
             <div className="min-w-0">

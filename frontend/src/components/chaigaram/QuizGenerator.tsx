@@ -7,7 +7,7 @@ import {
   Gauge,
   Loader2,
   Sparkles,
-  Wand2,
+  Terminal,
   CheckCircle2,
   XCircle,
   RotateCcw,
@@ -51,7 +51,7 @@ const STEP_ICONS: Record<string, typeof Database> = {
   retrieve: Database,
   signals: Gauge,
   calibrate: Cpu,
-  generate: Sparkles,
+  generate: Cpu,
 };
 
 export function QuizGenerator({
@@ -162,9 +162,9 @@ export function QuizGenerator({
       {/* Top Header & Engine Status */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-2">
         <div className="flex items-center gap-2 text-muted-foreground">
-          <Wand2 className="h-4 w-4 text-primary animate-pulse" />
+          <Terminal className="h-4 w-4 text-primary animate-pulse" />
           <span className="font-semibold text-foreground">
-            Adaptive RAG Quiz · {topicTitle}
+            Adaptive Diagnostic Drill · {topicTitle}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -436,7 +436,7 @@ export function QuizGenerator({
           >
             <div className="flex items-center justify-between">
               <div className="label-xs font-semibold text-foreground">
-                {mode === "results" ? "AI Evaluation & Score Breakdown" : "Generated Assessment Questions"}
+                {mode === "results" ? "Diagnostic Evaluation & Score Breakdown" : "Generated Assessment Questions"}
               </div>
               <div className="text-[11px] text-muted-foreground">
                 {quizData.questions.length} questions generated
@@ -565,7 +565,7 @@ export function QuizGenerator({
                   ) : (
                     <SendHorizontal className="h-3.5 w-3.5" />
                   )}
-                  Submit for AI Evaluation
+                  Submit for Diagnostic Evaluation
                 </button>
               </div>
             ) : (
