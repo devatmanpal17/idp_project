@@ -1,0 +1,16 @@
+:root { color-scheme: dark; font-family: "Arial Narrow", "Segoe UI", sans-serif; }
+* { box-sizing: border-box; }
+body { width: 316px; margin: 0; padding: 17px; color: #f5f0e5; background-color: #171716; background-image: radial-gradient(#3d3a34 1px, transparent 1px); background-size: 14px 14px; }
+header { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; }
+header div { display: grid; line-height: 1.05; }
+strong { font-size: 21px; font-weight: 950; letter-spacing: -1.4px; text-transform: uppercase; }
+small { margin-top: 5px; color: #aaa398; font: 10px ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.mark { display: grid; place-items: center; width: 41px; height: 41px; border: 2px solid #f5f0e5; color: #171716; background: #ff5a36; box-shadow: 3px 3px 0 #f5f0e5; font-size: 19px; font-weight: 950; transform: rotate(-4deg); }
+.tape { margin: 2px 0 15px; padding: 7px; color: #171716; background: #e8f24e; font: 800 9px ui-monospace, monospace; letter-spacing: .13em; text-align: center; transform: rotate(1deg); }
+.status { margin-bottom: 11px; padding: 10px; border: 1px solid #57524a; color: #bdb6aa; background: #21201e; font: 10px/1.4 ui-monospace, monospace; }
+.status.online { border-color: #49d78d; color: #74e8aa; }
+.status.offline { border-color: #ff4d64; color: #ff8292; }
+button { width: 100%; margin-top: 8px; padding: 11px 12px; border: 2px solid #f5f0e5; color: #f5f0e5; background: #252421; box-shadow: 3px 3px 0 #070707; font-weight: 850; text-align: left; cursor: pointer; transition: 120ms ease; }
+button:hover { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #070707; }
+.primary { display: flex; justify-content: space-between; color: #171716; background: #ff5a36; }
+.link { border: 0; box-shadow: none; color: #8f897f; background: transparent; font: 10px ui-monospace, monospace; text-align: center; }

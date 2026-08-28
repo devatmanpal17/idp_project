@@ -6,7 +6,7 @@ The `frontend/` folder contains the React 19 + TanStack Router + Tailwind CSS ap
 
 - **Framework**: TanStack Start / React Router + Vite
 - **Styling**: Tailwind CSS + Radix UI + Lucide Icons
-- **State & Data Fetching**: TanStack React Query + Supabase JS Client
+- **State & Data Fetching**: TanStack React Query + FastAPI learning telemetry
 - **Charts & Visualizations**: Recharts
 - **Animations**: Motion (framer-motion successor)
 

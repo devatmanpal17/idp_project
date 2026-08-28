@@ -12,9 +12,10 @@ router = APIRouter()
 @router.post("/api/settings/ai-config")
 def set_ai_config(req: AIConfigRequest):
     """Updates runtime AI Provider & API keys."""
-    llm_service.configure(provider=req.provider, api_key=req.api_key or "")
+    llm_service.configure(provider=req.provider, api_key=req.api_key or "", model=req.model or "")
     return {
         "status": "success",
         "active_provider": req.provider,
-        "has_key": bool(req.api_key)
+        "model": llm_service.model,
+        "has_key": False
     }

@@ -1,56 +1,43 @@
-"""
-Smart recommendations endpoint.
-"""
+"""Recommendations derived from persisted assessment evidence."""
+
+from datetime import datetime, timezone
+from typing import Any, Dict
 
 from fastapi import APIRouter
+
+from ml.analytics import quiz_analytics
 
 router = APIRouter()
 
 
 @router.get("/api/recommendations/smart")
-def get_smart_recommendations():
-    """Returns AI-calculated recommendations based on spaced-repetition retention curves."""
-    return {
-        "recommendations": [
+def get_smart_recommendations() -> Dict[str, Any]:
+    recommendations = []
+    now = datetime.now(timezone.utc)
+    for index, summary in enumerate(quiz_analytics.topic_summaries()):
+        mastery = float(summary["current_mastery"])
+        average = float(summary["average_score"])
+        last_attempt = datetime.fromisoformat(summary["last_attempt_at"])
+        days_since = max(0, (now - last_attempt).days)
+        weakness = 100.0 - mastery
+        recency_pressure = min(25.0, days_since * 2.5)
+        impact = round(min(100.0, weakness * 0.7 + (100.0 - average) * 0.2 + recency_pressure), 1)
+        action = "Generate reinforcement quiz" if mastery < 70 else "Run retention check"
+        recommendations.append(
             {
-                "id": "rec_01",
-                "topic": "Dynamic Programming",
-                "course": "Data Structures & Algorithms",
-                "type": "revisit_weak_topic",
-                "impact_score": 94,
-                "estimated_minutes": 35,
-                "reasoning": "Mastery is 24 with a -5.4 weekly trend. Quiz performance (18%) is the dominant drag and 8 revisits indicate passive rewatching without consolidation. A structured retrieval drill will recover retention.",
-                "action": "Launch Practice Quiz"
-            },
-            {
-                "id": "rec_02",
-                "topic": "Graph Traversal",
-                "course": "Data Structures & Algorithms",
-                "type": "revisit_weak_topic",
-                "impact_score": 88,
-                "estimated_minutes": 25,
-                "reasoning": "Graph traversal underpins Dynamic Programming on DAGs, which is scheduled next. Closing this 29-point mastery gap prevents downstream compounding failure.",
-                "action": "Review BFS/DFS Chunks"
-            },
-            {
-                "id": "rec_03",
-                "topic": "Support Vector Machines",
-                "course": "Machine Learning A-Z",
-                "type": "revisit_weak_topic",
-                "impact_score": 81,
-                "estimated_minutes": 30,
-                "reasoning": "Largest completion-to-mastery gap in Machine Learning A-Z (78% watched vs 41% mastery). Retrieval practice on the kernel trick will recover over 30 points of mastery.",
-                "action": "Generate SVM Quiz"
-            },
-            {
-                "id": "rec_04",
-                "topic": "Performance Optimization",
-                "course": "React - The Complete Guide",
-                "type": "proceed_next_module",
-                "impact_score": 66,
-                "estimated_minutes": 20,
-                "reasoning": "Performance Optimization is trending down (-2.7). A short profiling exercise and hook review will stabilize it before moving to server components.",
-                "action": "Start Quick Quiz"
+                "id": f"rec_{index + 1}",
+                "topic": summary["topic"],
+                "course": "Indexed lesson collection",
+                "type": "revisit_weak_topic" if mastery < 70 else "retention_check",
+                "impact_score": impact,
+                "estimated_minutes": max(10, min(40, round(10 + weakness / 4))),
+                "reasoning": (
+                    f"Based on {summary['attempts']} persisted attempt(s): mastery is "
+                    f"{mastery:.1f}, average quiz score is {average:.1f}, and the latest "
+                    f"mastery change is {summary['mastery_trend']:+.1f}."
+                ),
+                "action": action,
             }
-        ]
-    }
+        )
+    recommendations.sort(key=lambda item: item["impact_score"], reverse=True)
+    return {"recommendations": recommendations}

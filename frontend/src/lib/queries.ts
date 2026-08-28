@@ -1,59 +1,60 @@
-/**
- * ChaiGaram — React Query Options
- */
+/** React Query options backed entirely by FastAPI learning telemetry. */
 
 import { queryOptions } from "@tanstack/react-query";
-import type {
-  Course,
-  Topic,
-  Quiz,
-  StudyEvent,
-  Recommendation,
-  ActivityEntry,
-} from "./types";
-import {
-  MOCK_COURSES,
-  MOCK_TOPICS,
-  MOCK_QUIZZES,
-  MOCK_STUDY_EVENTS,
-  MOCK_RECOMMENDATIONS,
-  MOCK_ACTIVITY,
-} from "./mockData";
+import type { ActivityEntry, Course, Quiz, Recommendation, StudyEvent, Topic } from "./types";
 
-// Simulate network delay for a more realistic feel
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+type LearningData = {
+  courses: Course[];
+  topics: Topic[];
+  quizzes: Quiz[];
+  study_events: StudyEvent[];
+  recommendations: Recommendation[];
+  activity_log: ActivityEntry[];
+};
 
-async function fetchMock<T>(data: T[]): Promise<T[]> {
-  await delay(150);
-  return data;
+async function fetchLearningData(): Promise<LearningData> {
+  const response = await fetch("/api/learning/data");
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || `Learning data request failed (${response.status})`);
+  }
+  return response.json();
 }
 
+const base = {
+  queryFn: fetchLearningData,
+  staleTime: 5_000,
+  refetchInterval: 15_000,
+};
+
+export const learningDataQuery = queryOptions({ ...base, queryKey: ["learning-data"] });
 export const coursesQuery = queryOptions({
-  queryKey: ["courses"],
-  queryFn: () => fetchMock<Course>(MOCK_COURSES),
+  ...base,
+  queryKey: ["learning-data", "courses"],
+  select: (data) => data.courses,
 });
-
 export const topicsQuery = queryOptions({
-  queryKey: ["topics"],
-  queryFn: () => fetchMock<Topic>(MOCK_TOPICS),
+  ...base,
+  queryKey: ["learning-data", "topics"],
+  select: (data) => data.topics,
 });
-
 export const quizzesQuery = queryOptions({
-  queryKey: ["quizzes"],
-  queryFn: () => fetchMock<Quiz>(MOCK_QUIZZES),
+  ...base,
+  queryKey: ["learning-data", "quizzes"],
+  select: (data) => data.quizzes,
 });
-
 export const studyEventsQuery = queryOptions({
-  queryKey: ["study_events"],
-  queryFn: () => fetchMock<StudyEvent>(MOCK_STUDY_EVENTS),
+  ...base,
+  queryKey: ["learning-data", "study-events"],
+  select: (data) => data.study_events,
 });
-
 export const recommendationsQuery = queryOptions({
-  queryKey: ["recommendations"],
-  queryFn: () => fetchMock<Recommendation>(MOCK_RECOMMENDATIONS),
+  ...base,
+  queryKey: ["learning-data", "recommendations"],
+  select: (data) => data.recommendations,
 });
-
 export const activityQuery = queryOptions({
-  queryKey: ["activity_log"],
-  queryFn: () => fetchMock<ActivityEntry>(MOCK_ACTIVITY),
+  ...base,
+  queryKey: ["learning-data", "activity"],
+  select: (data) => data.activity_log,
 });

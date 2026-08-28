@@ -30,11 +30,12 @@ from .routes.health import router as health_router
 from .routes.rag import router as rag_router
 from .routes.recommendations import router as recommendations_router
 from .routes.settings import router as settings_router
+from .routes.learning_data import router as learning_data_router
 
 app = FastAPI(
     title="ChaiGaram AI Engine",
     description="RAG vector search, LLM quiz generator, and learner signal intelligence.",
-    version="2.0.0",
+    version="3.0.0",
 )
 
 # Enable CORS for local development
@@ -51,3 +52,4 @@ app.include_router(health_router)
 app.include_router(rag_router)
 app.include_router(recommendations_router)
 app.include_router(settings_router)
+app.include_router(learning_data_router)

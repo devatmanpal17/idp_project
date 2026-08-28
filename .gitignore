@@ -49,3 +49,10 @@ __pycache__/
 venv/
 .venv/
 env/
+
+# Local RAG persistence
+data/chroma/
+data/*.sqlite3
+
+# Local release artifacts
+chaigaram-extension.zip

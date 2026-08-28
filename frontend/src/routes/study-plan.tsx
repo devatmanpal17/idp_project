@@ -44,27 +44,28 @@ function StudyPlanScreen() {
 
   const [calendarView, setCalendarView] = useState<"week" | "month">("week");
   const [selectedTopicId, setSelectedTopicId] = useState<string>(topics[0]?.id || "");
-  const [googleCalendarConnected, setGoogleCalendarConnected] = useState(true);
+  const [googleCalendarConnected, setGoogleCalendarConnected] = useState(false);
 
   const selectedTopic = useMemo(() => {
     return (
       topics.find((t) => t.id === selectedTopicId) ||
-      topics[0] || {
-        title: "Support Vector Machines",
-        mastery_score: 41,
-      }
+      topics[0] || { id: "", title: "No indexed topic", mastery_score: 0 }
     );
   }, [topics, selectedTopicId]);
 
   // Compute Ebbinghaus retention decay curve data
   const retentionData = useMemo(() => {
-    const score = Number(selectedTopic.mastery_score) || 45;
-    // reviews at Day 2 and Day 6
-    return retentionCurve(score, 14, [2, 6]);
-  }, [selectedTopic]);
+    const score = Number(selectedTopic.mastery_score) || 0;
+    const now = Date.now();
+    const reviews = studyEvents
+      .filter((event) => !selectedTopic.id || event.topic_id === selectedTopic.id)
+      .map((event) => Math.round((new Date(event.scheduled_at).getTime() - now) / 86_400_000))
+      .filter((day) => day >= 0 && day <= 14);
+    return retentionCurve(score, 14, reviews);
+  }, [selectedTopic, studyEvents]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-9">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -105,7 +106,7 @@ function StudyPlanScreen() {
       </div>
 
       {/* Main Grid: Calendar Timeline (2 cols) & Retention Curve (1 col) */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-7 xl:grid-cols-3">
         {/* Calendar Events Timeline */}
         <Panel className="lg:col-span-2">
           <PanelHeader

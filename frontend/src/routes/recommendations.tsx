@@ -39,7 +39,7 @@ function RecommendationsScreen() {
   const [activeDrillTopic, setActiveDrillTopic] = useState<string | null>(null);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-9">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -73,18 +73,19 @@ function RecommendationsScreen() {
 
           <QuizGenerator
             topicTitle={activeDrillTopic}
-            masteryScore={topics.find((t) => t.title === activeDrillTopic)?.mastery_score ?? 40}
+            masteryScore={topics.find((t) => t.title === activeDrillTopic)?.mastery_score ?? 0}
           />
         </Panel>
       )}
 
       {/* Recommendations Cards Grid */}
-      <div className="space-y-4">
+      <div className="space-y-5">
         {recommendations.map((rec, index) => {
           const topicObj = topics.find((t) => t.id === rec.topic_id);
           const courseObj = courses.find((c) => c.id === topicObj?.course_id);
-          const topicTitle = topicObj?.title || "Dynamic Programming";
-          const courseTitle = courseObj?.title || "Data Structures & Algorithms";
+          const topicTitle = topicObj?.title;
+          const courseTitle = courseObj?.title;
+          if (!topicTitle || !courseTitle) return null;
 
           const isTopPriority = index === 0;
 

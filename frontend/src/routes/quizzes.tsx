@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -12,10 +12,13 @@ import {
   Sparkles,
   Wand2,
   XCircle,
+  Database,
+  Loader2,
 } from "lucide-react";
 import { quizzesQuery, topicsQuery, coursesQuery, relativeTime, type Quiz } from "@/lib/chaigaram";
 import { Panel, PanelHeader, MasteryPill } from "@/components/chaigaram/primitives";
 import { QuizGenerator } from "@/components/chaigaram/QuizGenerator";
+import { fetchIndexedTopics, ingestRAGDocument } from "@/lib/ai-client";
 
 export const Route = createFileRoute("/quizzes")({
   head: () => ({
@@ -34,10 +37,53 @@ function QuizzesScreen() {
 
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(quizzes[0] || null);
   const [generatorOpen, setGeneratorOpen] = useState(false);
-  const [quizTopic, setQuizTopic] = useState("Support Vector Machines");
+  const [quizTopic, setQuizTopic] = useState("");
+  const [indexedTopics, setIndexedTopics] = useState<string[]>([]);
+  const [sourceTitle, setSourceTitle] = useState("");
+  const [sourceTopic, setSourceTopic] = useState("");
+  const [sourceContent, setSourceContent] = useState("");
+  const [ingesting, setIngesting] = useState(false);
+  const [ingestMessage, setIngestMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchIndexedTopics().then(setIndexedTopics).catch(() => setIndexedTopics([]));
+  }, []);
+
+  const availableTopics = useMemo(
+    () => Array.from(new Set([...indexedTopics, ...topics.map((topic) => topic.title)])),
+    [indexedTopics, topics],
+  );
+
+  useEffect(() => {
+    if (!quizTopic && availableTopics[0]) setQuizTopic(availableTopics[0]);
+  }, [availableTopics, quizTopic]);
+
+  useEffect(() => {
+    if (!selectedQuiz && quizzes[0]) setSelectedQuiz(quizzes[0]);
+  }, [quizzes, selectedQuiz]);
+
+  async function handleIngest() {
+    setIngesting(true);
+    setIngestMessage(null);
+    try {
+      const result = await ingestRAGDocument({
+        title: sourceTitle,
+        topic: sourceTopic,
+        content: sourceContent,
+      });
+      setIngestMessage(`Indexed ${result.chunks_indexed} semantic chunks in ChromaDB.`);
+      setQuizTopic(sourceTopic);
+      setIndexedTopics(await fetchIndexedTopics());
+      setSourceContent("");
+    } catch (error) {
+      setIngestMessage(error instanceof Error ? error.message : "Ingestion failed.");
+    } finally {
+      setIngesting(false);
+    }
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-9">
       {/* Top Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -59,6 +105,51 @@ function QuizzesScreen() {
         </button>
       </div>
 
+      <Panel className="border-accent/30 p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <Database className="h-4 w-4 text-accent" />
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Add real lesson evidence</h2>
+            <p className="text-[11px] text-muted-foreground">
+              Paste notes or a transcript. It is chunked, embedded by Ollama, and persisted in ChromaDB.
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <input
+            value={sourceTitle}
+            onChange={(event) => setSourceTitle(event.target.value)}
+            placeholder="Source title (for citations)"
+            className="rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-foreground"
+          />
+          <input
+            value={sourceTopic}
+            onChange={(event) => setSourceTopic(event.target.value)}
+            placeholder="Topic"
+            className="rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-foreground"
+          />
+        </div>
+        <textarea
+          value={sourceContent}
+          onChange={(event) => setSourceContent(event.target.value)}
+          placeholder="Paste lecture notes, a transcript, or other trusted course material..."
+          rows={5}
+          className="mt-2 w-full rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-foreground"
+        />
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[11px] text-muted-foreground">{ingestMessage}</span>
+          <button
+            type="button"
+            onClick={handleIngest}
+            disabled={ingesting || sourceTitle.trim().length < 2 || sourceTopic.trim().length < 2 || sourceContent.trim().length < 20}
+            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-xs font-medium text-accent-foreground disabled:opacity-50"
+          >
+            {ingesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Database className="h-3.5 w-3.5" />}
+            Index in ChromaDB
+          </button>
+        </div>
+      </Panel>
+
       {/* Generator Banner / Modal */}
       {generatorOpen && (
         <Panel className="border-primary/50 bg-surface p-6 shadow-xl ring-1 ring-primary/20">
@@ -76,9 +167,9 @@ function QuizzesScreen() {
                 onChange={(e) => setQuizTopic(e.target.value)}
                 className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
               >
-                {topics.map((t) => (
-                  <option key={t.id} value={t.title}>
-                    {t.title}
+                {availableTopics.map((title) => (
+                  <option key={title} value={title}>
+                    {title}
                   </option>
                 ))}
               </select>
@@ -94,7 +185,7 @@ function QuizzesScreen() {
 
           <QuizGenerator
             topicTitle={quizTopic}
-            masteryScore={topics.find((t) => t.title === quizTopic)?.mastery_score ?? 45}
+            masteryScore={topics.find((t) => t.title === quizTopic)?.mastery_score ?? 0}
             onMasteryUpdated={(newScore) => {
               console.log("Mastery updated to:", newScore);
             }}
@@ -103,7 +194,7 @@ function QuizzesScreen() {
       )}
 
       {/* Main Grid: Quiz History (1 col) + Assessment Review Report (2 cols) */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-7 xl:grid-cols-3">
         {/* Quiz History List */}
         <Panel>
           <PanelHeader title="Past Assessments" subtitle={`${quizzes.length} completed sessions`} />
@@ -182,10 +273,8 @@ function QuizzesScreen() {
 
                 <button
                   onClick={() => {
-                    setQuizTopic(
-                      topics.find((t) => t.id === selectedQuiz.topic_id)?.title ||
-                        "Support Vector Machines",
-                    );
+                    const title = topics.find((t) => t.id === selectedQuiz.topic_id)?.title;
+                    if (title) setQuizTopic(title);
                     setGeneratorOpen(true);
                   }}
                   className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"

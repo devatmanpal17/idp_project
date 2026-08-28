@@ -6,7 +6,7 @@ export const Route = createFileRoute("/courses")({
 
 function CoursesLayout() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-9">
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-semibold tracking-tight">Courses</h1>
         <p className="text-muted-foreground">Manage and view your courses.</p>

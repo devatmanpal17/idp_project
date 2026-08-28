@@ -1,0 +1,15 @@
+:root { color-scheme: dark; font-family: "Arial Narrow", "Segoe UI", sans-serif; }
+* { box-sizing: border-box; }
+body { margin:0; min-height:100vh; padding:8vh 20px; color:#f5f0e5; background-color:#171716; background-image:radial-gradient(#3b3934 1px,transparent 1px); background-size:18px 18px; }
+main { position:relative; max-width:650px; margin:auto; padding:34px; border:2px solid #f5f0e5; background:#211f1d; box-shadow:9px 10px 0 #060606; }
+main::before { content:"CONNECTION / 01"; position:absolute; top:-14px; right:24px; padding:7px 11px; color:#171716; background:#e8f24e; font:800 10px ui-monospace,monospace; letter-spacing:.1em; transform:rotate(2deg); }
+h1 { margin:0; font-size:42px; line-height:.9; letter-spacing:-3px; text-transform:uppercase; }
+p { max-width:490px; color:#aaa398; line-height:1.6; }
+label { display:grid; gap:8px; margin-top:25px; font-weight:850; }
+input[type=url] { padding:13px; border:2px solid #625e57; outline:none; color:inherit; background:#111; font:13px ui-monospace,monospace; }
+input[type=url]:focus { border-color:#5577ff; }
+.check { display:flex; align-items:flex-start; gap:10px; color:#d8d1c5; font-weight:600; }
+.check input { margin-top:3px; accent-color:#ff5a36; }
+button { margin-top:28px; padding:12px 20px; border:2px solid #f5f0e5; color:#171716; background:#ff5a36; box-shadow:4px 4px 0 #f5f0e5; font-weight:900; cursor:pointer; }
+button:hover { transform:translate(2px,2px); box-shadow:2px 2px 0 #f5f0e5; }
+#result { margin-top:19px; color:#49d78d; font:11px ui-monospace,monospace; }

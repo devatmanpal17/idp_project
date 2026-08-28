@@ -93,7 +93,7 @@ function TopicMasteryScreen() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-9">
       {/* Page Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -125,7 +125,7 @@ function TopicMasteryScreen() {
       </div>
 
       {/* Main Grid: Radar Chart (Centerpiece) + Formula Breakdown */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-7 xl:grid-cols-3">
         {/* Radar Chart Centerpiece */}
         <Panel className="lg:col-span-2">
           <PanelHeader

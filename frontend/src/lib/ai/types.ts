@@ -61,6 +61,7 @@ export type MasteryShiftPoint = {
 };
 
 export type RAGQuizResponse = {
+  quiz_id: string;
   topic: string;
   mastery_score: number;
   active_provider?: string;
@@ -73,10 +74,11 @@ export type RAGQuizResponse = {
   };
   telemetry_steps: TelemetryStep[];
   questions: Array<{
+    question_id: string;
     q: string;
     choices: string[];
-    answer: string;
-    why: string;
+    citations: string[];
+    bloom_level: string;
   }>;
   graphs?: {
     similarity_chart: SimilarityChartPoint[];
@@ -88,6 +90,7 @@ export type RAGQuizResponse = {
 };
 
 export type QuizEvaluationResult = {
+  attempt_id: number;
   score: number;
   correct_count: number;
   total_questions: number;
@@ -97,10 +100,19 @@ export type QuizEvaluationResult = {
     expected_answer: string;
     is_correct: boolean;
     explanation: string;
+    citations: string[];
+    bloom_level: string;
   }>;
   previous_mastery: number;
   new_mastery: number;
   mastery_delta: number;
   feedback_summary: string;
   mastery_shift_chart?: MasteryShiftPoint[];
+  mastery_history?: Array<{
+    id: number;
+    completed_at: string;
+    score: number;
+    previous_mastery: number;
+    new_mastery: number;
+  }>;
 };

@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "ChaiGaram Learning Companion",
+  "version": "2.1.0",
+  "description": "Turn any learning webpage into a private tutor, notebook, and adaptive quiz.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "ChaiGaram Companion",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "exclude_matches": ["http://localhost:8000/*", "http://127.0.0.1:8000/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

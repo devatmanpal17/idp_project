@@ -1,177 +1,287 @@
-"""
-RAG endpoints: retrieve, generate-quiz, evaluate-quiz, stream-transcript.
-Generates dynamic questions, adaptive calibration, and interactive graph payloads.
-"""
+"""Persistent RAG ingestion, retrieval, grounded generation, and quiz evaluation."""
+
+from __future__ import annotations
 
 import time
-from fastapi import APIRouter
-from ..models import RetrieveRequest, GenerateQuizRequest, EvaluateQuizRequest, StreamTranscriptRequest
-from ml import (
-    rag_engine,
-    llm_service,
-    calibrate_difficulty,
-    generate_similarity_distribution_chart,
-    generate_irt_curve,
-    generate_cognitive_breakdown,
-    generate_mastery_shift_chart,
-    generate_concept_graph,
+from typing import Any, Dict, List
+
+from fastapi import APIRouter, HTTPException
+
+from ..models import (
+    AskRequest,
+    EvaluateQuizRequest,
+    GenerateQuizRequest,
+    IngestDocumentRequest,
+    RetrieveRequest,
+    StreamTranscriptRequest,
 )
+from ml import (
+    calibrate_difficulty,
+    compute_mastery_update,
+    generate_concept_graph,
+    generate_irt_curve,
+    generate_mastery_shift_chart,
+    generate_similarity_distribution_chart,
+    llm_service,
+    rag_engine,
+)
+from ml.analytics import quiz_analytics
+from ml.llm_service import LLMConfigurationError
+from ml.rag_engine import RAGConfigurationError
 
 router = APIRouter()
 
 
+def _service_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, (RAGConfigurationError, LLMConfigurationError)):
+        return HTTPException(status_code=503, detail=str(exc))
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=422, detail=str(exc))
+    return HTTPException(status_code=500, detail="The AI pipeline failed unexpectedly.")
+
+
+@router.get("/api/rag/topics")
+def indexed_topics() -> Dict[str, Any]:
+    return {"topics": rag_engine.topics(), "indexed_chunks": rag_engine.count}
+
+
+@router.post("/api/rag/ingest")
+def ingest_document(req: IngestDocumentRequest) -> Dict[str, Any]:
+    try:
+        result = rag_engine.ingest_document(
+            text=req.content,
+            topic=req.topic,
+            source=req.title,
+            course=req.course,
+        )
+        return {"status": "indexed", "topic": req.topic, **result}
+    except Exception as exc:
+        raise _service_error(exc) from exc
+
+
+@router.post("/api/rag/ask")
+def ask_lesson(req: AskRequest) -> Dict[str, Any]:
+    try:
+        if req.transcript_context:
+            rag_engine.ingest_transcript(
+                text=req.transcript_context,
+                topic=req.topic or "Current lesson",
+                course="Question context",
+                timestamp="current",
+            )
+        chunks = rag_engine.retrieve(req.question, topic=req.topic, top_k=req.top_k)
+        answer = llm_service.answer_with_rag(req.question, chunks, req.topic or "Current lesson")
+        return {
+            "answer": answer,
+            "active_provider": llm_service._last_provider_used,
+            "sources": chunks,
+        }
+    except Exception as exc:
+        raise _service_error(exc) from exc
+
+
 @router.post("/api/rag/retrieve")
-def retrieve_chunks(req: RetrieveRequest):
-    """Vector search over transcripts with cosine similarity."""
-    start_t = time.time()
-    chunks = rag_engine.retrieve(query=req.query, topic=req.topic, top_k=req.top_k)
-    elapsed_ms = round((time.time() - start_t) * 1000, 2)
+def retrieve_chunks(req: RetrieveRequest) -> Dict[str, Any]:
+    start = time.perf_counter()
+    try:
+        chunks = rag_engine.retrieve(req.query, topic=req.topic, top_k=req.top_k)
+    except Exception as exc:
+        raise _service_error(exc) from exc
     return {
         "topic": req.topic,
         "query": req.query,
         "chunks_found": len(chunks),
-        "retrieval_time_ms": elapsed_ms,
-        "chunks": chunks
+        "retrieval_time_ms": round((time.perf_counter() - start) * 1000, 2),
+        "vector_database": "chromadb",
+        "embedding_model": rag_engine.embeddings.model,
+        "chunks": chunks,
     }
 
 
 @router.post("/api/rag/generate-quiz")
-def generate_quiz(req: GenerateQuizRequest):
-    """
-    Full end-to-end RAG Quiz Generation:
-    1. Retrieve context chunks with TF-IDF vector similarity
-    2. Calibrate difficulty from learner signals (mastery, dwell, error history)
-    3. Generate schema-validated questions via LLM (OpenAI / Gemini / Adaptive RAG Engine)
-    4. Synthesize educational graph payloads (IRT curves, similarity charts, Bloom's radar)
-    5. Return full execution telemetry for UI visualization
-    """
-    start_t = time.time()
+def generate_quiz(req: GenerateQuizRequest) -> Dict[str, Any]:
+    start = time.perf_counter()
+    try:
+        chunks = rag_engine.retrieve(req.topic, topic=req.topic, top_k=8)
+        if not chunks:
+            raise ValueError(
+                f"No indexed lesson content exists for '{req.topic}'. Add source text first."
+            )
+        calibration = calibrate_difficulty(
+            mastery_score=req.mastery_score,
+            error_count=len(req.recent_errors or []),
+        )
+        questions = llm_service.generate_quiz_with_rag(
+            topic=req.topic,
+            context_chunks=chunks,
+            mastery_score=req.mastery_score,
+            difficulty=calibration["difficulty"],
+            count=req.question_count,
+        )
+        quiz_id = quiz_analytics.save_quiz(req.topic, questions)
+    except Exception as exc:
+        raise _service_error(exc) from exc
 
-    # 1. Retrieve RAG chunks
-    chunks = rag_engine.retrieve(query=req.topic, topic=req.topic, top_k=6)
-
-    # 2. Calibrate difficulty
-    calibration = calibrate_difficulty(
-        mastery_score=req.mastery_score,
-        error_count=len(req.recent_errors or [])
-    )
-    diff = calibration["difficulty"]
-
-    # 3. Generate questions using LLM
-    questions = llm_service.generate_quiz_with_rag(
-        topic=req.topic,
-        context_chunks=chunks,
-        mastery_score=req.mastery_score,
-        difficulty=diff,
-        count=req.question_count
-    )
-
-    # 4. Generate dynamic educational graph payloads
-    similarity_chart = generate_similarity_distribution_chart(chunks)
-    irt_curve = generate_irt_curve(difficulty=diff, mastery_score=req.mastery_score)
-    cognitive_dimensions = generate_cognitive_breakdown(difficulty=diff)
-    concept_graph = generate_concept_graph(topic=req.topic, chunks=chunks)
-
-    elapsed_ms = round((time.time() - start_t) * 1000, 2)
-    provider_name = llm_service._last_provider_used or llm_service.active_provider
-
-    # Telemetry steps for UI animation / verification
+    bloom_counts: Dict[str, int] = {}
+    for question in questions:
+        level = question["bloom_level"]
+        bloom_counts[level] = bloom_counts.get(level, 0) + 1
+    cognitive_dimensions = [
+        {
+            "dimension": level,
+            "weight": round(count / len(questions) * 100, 1),
+            "target": round(count / len(questions) * 100, 1),
+        }
+        for level, count in bloom_counts.items()
+    ]
+    public_questions = [
+        {
+            "question_id": f"{quiz_id}_{index}",
+            "q": question["q"],
+            "choices": question["choices"],
+            "citations": question["citations"],
+            "bloom_level": question["bloom_level"],
+        }
+        for index, question in enumerate(questions)
+    ]
+    elapsed = round((time.perf_counter() - start) * 1000, 2)
     telemetry_steps = [
         {
             "step": "retrieve",
-            "label": "Vector Search & Retrieval",
-            "detail": f"top_k={len(chunks)} chunks · TF-IDF cosine",
+            "label": "ChromaDB semantic retrieval",
+            "detail": f"{len(chunks)} cosine-ranked chunks",
             "lines": [
-                f"{c['chunk_id']}  sim={c['similarity']:.3f}  \u201c{c['snippet'][:50]}\u2026\u201d"
-                for c in chunks[:4]
-            ]
+                f"{chunk['chunk_id']}  cosine={chunk['similarity']:.4f}  {chunk['source']}"
+                for chunk in chunks[:4]
+            ],
         },
         {
             "step": "signals",
-            "label": "Learner Signals & Item Response",
-            "detail": f"mastery={req.mastery_score:.0f} · dwell · IRT calibration",
+            "label": "Learner signal calibration",
+            "detail": f"mastery={req.mastery_score:.1f}",
             "lines": [
-                f"mastery_score      = {req.mastery_score:.0f}",
-                f"quiz_perf_pct      = {req.quiz_perf_pct or 50:.0f}   (weight 0.40)",
-                f"time_on_section    = {req.time_on_section_pct or 50:.0f}   (weight 0.35)",
-                f"revisit_frequency  = {req.revisit_frequency_pct or 50:.0f}   (weight 0.25)",
-                f"recent_errors      = {req.recent_errors if req.recent_errors else 'None'}",
-            ]
+                f"quiz performance = {req.quiz_perf_pct or 0:.1f}",
+                f"time on section = {req.time_on_section_pct or 0:.1f}",
+                f"recent errors = {len(req.recent_errors or [])}",
+            ],
         },
         {
             "step": "calibrate",
-            "label": "Adaptive Difficulty Calibration",
-            "detail": f"target level: {calibration['target_level']}",
-            "lines": [
-                f"difficulty = {calibration['formula']}",
-                f"mix        = {calibration['mix']}",
-                f"focus      = '{req.topic}' key invariants & Bloom cognitive depth",
-            ]
+            "label": "IRT difficulty calibration",
+            "detail": calibration["target_level"],
+            "lines": [calibration["formula"], f"target success = {calibration['target_success_rate']}"],
         },
         {
             "step": "generate",
-            "label": f"LLM Generation ({provider_name})",
-            "detail": f"structured schema · {len(questions)} questions generated",
+            "label": "Grounded structured generation",
+            "detail": llm_service.active_provider,
             "lines": [
-                f"context_chunks = {len(chunks)}   estimated_tokens = {sum(c.get('token_count', 20) for c in chunks) + 480}",
-                f"engine = {provider_name}",
-                "schema validation = OK · rationale citations linked",
-            ]
-        }
+                f"schema validated = true",
+                f"citation allow-list = {len(chunks)} chunks",
+                f"quiz session = {quiz_id[:12]}",
+            ],
+        },
     ]
-
     return {
+        "quiz_id": quiz_id,
         "topic": req.topic,
         "mastery_score": req.mastery_score,
-        "active_provider": provider_name,
+        "active_provider": llm_service.active_provider,
         "calibration": calibration,
         "telemetry_steps": telemetry_steps,
-        "questions": questions,
+        "questions": public_questions,
         "graphs": {
-            "similarity_chart": similarity_chart,
-            "irt_curve": irt_curve,
+            "similarity_chart": generate_similarity_distribution_chart(chunks),
+            "irt_curve": generate_irt_curve(calibration["difficulty"], req.mastery_score),
             "cognitive_dimensions": cognitive_dimensions,
-            "concept_graph": concept_graph,
+            "concept_graph": generate_concept_graph(req.topic, chunks),
         },
-        "total_time_ms": elapsed_ms
+        "total_time_ms": elapsed,
     }
 
 
 @router.post("/api/rag/evaluate-quiz")
-def evaluate_quiz(req: EvaluateQuizRequest):
-    """Grades submitted quiz answers and recalculates mastery score with shift graphs."""
-    evaluation = llm_service.evaluate_quiz(
-        questions=req.questions,
-        given_answers=req.given_answers,
-        current_mastery=req.current_mastery
+def evaluate_quiz(req: EvaluateQuizRequest) -> Dict[str, Any]:
+    stored = quiz_analytics.get_quiz(req.quiz_id)
+    if not stored:
+        raise HTTPException(status_code=404, detail="Quiz session was not found.")
+    questions: List[Dict[str, Any]] = stored["questions"]
+    if len(req.given_answers) != len(questions):
+        raise HTTPException(status_code=422, detail="Answer count does not match the quiz.")
+    evaluations: List[Dict[str, Any]] = []
+    correct_count = 0
+    for question, given in zip(questions, req.given_answers):
+        correct = given.strip().casefold() == question["answer"].strip().casefold()
+        correct_count += int(correct)
+        evaluations.append(
+            {
+                "question": question["q"],
+                "given_answer": given,
+                "expected_answer": question["answer"],
+                "is_correct": correct,
+                "explanation": question["why"],
+                "citations": question["citations"],
+                "bloom_level": question["bloom_level"],
+            }
+        )
+    score = round(correct_count / max(1, len(questions)) * 100, 1)
+    mastery = compute_mastery_update(score, req.current_mastery)
+    attempt_id = quiz_analytics.record(
+        topic=stored["topic"],
+        score=score,
+        previous_mastery=req.current_mastery,
+        new_mastery=mastery["new_mastery"],
+        correct_count=correct_count,
+        question_count=len(questions),
+        details=evaluations,
     )
-
-    # Generate mastery comparison shift graph
-    mastery_shift_chart = generate_mastery_shift_chart(
-        previous_mastery=evaluation["previous_mastery"],
-        new_mastery=evaluation["new_mastery"],
-        score_pct=evaluation["score"]
-    )
-    evaluation["mastery_shift_chart"] = mastery_shift_chart
-
-    return evaluation
+    return {
+        "attempt_id": attempt_id,
+        "score": score,
+        "correct_count": correct_count,
+        "total_questions": len(questions),
+        "evaluations": evaluations,
+        "previous_mastery": req.current_mastery,
+        "new_mastery": mastery["new_mastery"],
+        "mastery_delta": mastery["mastery_delta"],
+        "feedback_summary": (
+            "Strong result. Continue with a higher difficulty."
+            if score >= 80
+            else "Review the cited evidence for missed questions and retry."
+            if score >= 50
+            else "Revisit the retrieved lesson sections before another attempt."
+        ),
+        "mastery_shift_chart": generate_mastery_shift_chart(
+            req.current_mastery, mastery["new_mastery"], score
+        ),
+        "mastery_history": quiz_analytics.history(stored["topic"]),
+    }
 
 
 @router.post("/api/rag/stream-transcript")
-def stream_transcript(req: StreamTranscriptRequest):
-    """
-    Ingests live DOM / video player transcript segment from the simulated Chrome extension.
-    Performs real-time chunking and estimates instant mastery signal.
-    """
+def stream_transcript(req: StreamTranscriptRequest) -> Dict[str, Any]:
+    try:
+        indexed = rag_engine.ingest_transcript(
+            req.transcript_segment,
+            req.current_topic,
+            req.video_title,
+            req.timestamp,
+            extra_metadata={
+                "page_url": req.page_url or "",
+                "dwell_seconds": req.dwell_seconds,
+                "video_position_seconds": req.video_position_seconds or 0,
+                "video_duration_seconds": req.video_duration_seconds or 0,
+            },
+        )
+    except Exception as exc:
+        raise _service_error(exc) from exc
     word_count = len(req.transcript_segment.split())
-    comprehension_factor = min(1.0, (req.dwell_seconds / max(1, word_count * 0.3)))
-    signal_delta = round((comprehension_factor - 0.5) * 2.0, 1)
-
+    comprehension_factor = min(1.0, req.dwell_seconds / max(1, word_count * 0.3))
     return {
         "video": req.video_title,
         "timestamp": req.timestamp,
         "words_captured": word_count,
-        "live_signal_delta": signal_delta,
-        "status": "indexed_to_rag",
-        "message": f"Captured {word_count} words from video track. RAG buffer updated."
+        "live_signal_delta": round((comprehension_factor - 0.5) * 2.0, 1),
+        "status": "indexed_to_chromadb",
+        **indexed,
     }

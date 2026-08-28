@@ -19,7 +19,7 @@ function CoursesIndex() {
   const { data: topics = [] } = useQuery(topicsQuery);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-9">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
@@ -32,7 +32,7 @@ function CoursesIndex() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
         {courses.map((course) => {
           const courseTopics = topics.filter((t) => t.course_id === course.id);
           const platformColor = PLATFORM_TINT[course.platform] || "text-primary";

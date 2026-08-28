@@ -24,6 +24,8 @@ export type Topic = {
   minutes_on_section: number;
   revisits: number;
   last_updated: string;
+  indexed_chunks?: number;
+  assessed?: boolean;
 };
 
 export type QuizQuestion = {

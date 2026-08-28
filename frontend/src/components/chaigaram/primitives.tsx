@@ -15,7 +15,7 @@ export function Panel({
   return (
     <div
       className={cn(
-        "rounded-xl border border-border/80 shadow-panel transition-all duration-200 hover:border-border-strong hover:shadow-float",
+        "rounded-xl border border-border shadow-panel",
         tint ? "bg-surface-2" : "bg-surface",
         className,
       )}
@@ -40,7 +40,7 @@ export function PanelHeader({
   return (
     <div
       className={cn(
-        "flex items-start justify-between gap-4 border-b border-border/60 px-5 py-4",
+        "flex items-start justify-between gap-5 border-b border-border px-5 py-4",
         className,
       )}
     >
@@ -131,12 +131,12 @@ export function StatCard({
           ? "text-primary"
           : "text-foreground";
   return (
-    <Panel className="p-4">
+    <Panel className="p-5">
       <div className="flex items-center justify-between">
         <span className="label-xs">{label}</span>
         <span className="text-muted-foreground/70">{icon}</span>
       </div>
-      <div className={cn("mt-3 text-3xl font-medium leading-none", toneClass)}>
+      <div className={cn("mt-5 font-display text-3xl font-semibold leading-none tracking-[-0.045em]", toneClass)}>
         {raw ? (
           <span className="num text-2xl">{raw}</span>
         ) : (
@@ -174,7 +174,7 @@ export function MasteryPill({ score }: { score: number }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[11px] font-medium",
+        "inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-[10px] font-semibold",
         tone,
       )}
     >
@@ -321,10 +321,10 @@ export function PageHeader({
   action?: ReactNode | undefined;
 }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div className="mb-9 flex flex-wrap items-end justify-between gap-5">
       <div>
         {eyebrow ? <div className="label-xs mb-1">{eyebrow}</div> : null}
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="text-3xl font-semibold tracking-[-0.045em] sm:text-4xl">{title}</h1>
         {description ? (
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>
         ) : null}

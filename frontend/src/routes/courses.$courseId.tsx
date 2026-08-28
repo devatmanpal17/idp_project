@@ -67,7 +67,7 @@ function CourseDetail() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-9">
       {/* Breadcrumb & Navigation */}
       <div>
         <Link
@@ -106,7 +106,7 @@ function CourseDetail() {
       </Panel>
 
       {/* Grid: Time Chart & Module Breakdown */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-7 xl:grid-cols-3">
         {/* Module Breakdown Table (2 cols) */}
         <Panel className="lg:col-span-2">
           <PanelHeader
@@ -226,7 +226,7 @@ function CourseDetail() {
           <QuizGenerator
             topicTitle={selectedTopicForQuiz}
             masteryScore={
-              courseTopics.find((t) => t.title === selectedTopicForQuiz)?.mastery_score ?? 50
+              courseTopics.find((t) => t.title === selectedTopicForQuiz)?.mastery_score ?? 0
             }
           />
         </Panel>
