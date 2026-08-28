@@ -5,6 +5,7 @@ Health check endpoint — reports real AI provider status.
 import time
 from fastapi import APIRouter
 from ml import rag_engine, llm_service
+from ml.analytics import quiz_analytics
 
 router = APIRouter()
 
@@ -25,5 +26,6 @@ def health_check():
         "active_ai_provider": llm_service.active_provider,
         "llm_service": llm_status,
         "last_provider_used": llm_service._last_provider_used,
+        "analytics_database": quiz_analytics.storage_backend,
         "timestamp": time.time()
     }

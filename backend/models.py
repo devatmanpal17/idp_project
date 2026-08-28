@@ -19,6 +19,12 @@ class AskRequest(BaseModel):
     top_k: int = Field(default=5, ge=1, le=10)
 
 
+class SummarizeRequest(BaseModel):
+    topic: str = Field(..., min_length=2, max_length=300)
+    page_content: str = Field(..., min_length=20, max_length=50000)
+    page_url: Optional[str] = Field(default="", max_length=4000)
+
+
 class GenerateQuizRequest(BaseModel):
     topic: str = Field(..., description="Target topic name")
     mastery_score: float = Field(default=0.0, description="Persisted current mastery score (0-100)")
@@ -27,6 +33,9 @@ class GenerateQuizRequest(BaseModel):
     revisit_frequency_pct: Optional[float] = Field(default=0.0)
     recent_errors: Optional[List[str]] = Field(default_factory=list)
     question_count: int = Field(default=3, ge=1, le=8)
+    source_context: Optional[str] = Field(default=None, max_length=50000)
+    page_url: Optional[str] = Field(default="", max_length=4000)
+    language: str = Field(default="English", pattern="^English$")
 
 
 class EvaluateQuizRequest(BaseModel):

@@ -14,6 +14,7 @@ from ..models import (
     IngestDocumentRequest,
     RetrieveRequest,
     StreamTranscriptRequest,
+    SummarizeRequest,
 )
 from ml import (
     calibrate_difficulty,
@@ -62,17 +63,46 @@ def ingest_document(req: IngestDocumentRequest) -> Dict[str, Any]:
 @router.post("/api/rag/ask")
 def ask_lesson(req: AskRequest) -> Dict[str, Any]:
     try:
+        active_document_id = None
         if req.transcript_context:
-            rag_engine.ingest_transcript(
+            indexed = rag_engine.ingest_transcript(
                 text=req.transcript_context,
                 topic=req.topic or "Current lesson",
                 course="Question context",
                 timestamp="current",
             )
-        chunks = rag_engine.retrieve(req.question, topic=req.topic, top_k=req.top_k)
+            active_document_id = indexed["document_id"]
+        chunks = rag_engine.retrieve(
+            req.question, topic=req.topic, top_k=req.top_k,
+            document_id=active_document_id,
+        )
         answer = llm_service.answer_with_rag(req.question, chunks, req.topic or "Current lesson")
         return {
             "answer": answer,
+            "active_provider": llm_service._last_provider_used,
+            "sources": chunks,
+        }
+    except Exception as exc:
+        raise _service_error(exc) from exc
+
+
+@router.post("/api/rag/summarize")
+def summarize_page(req: SummarizeRequest) -> Dict[str, Any]:
+    try:
+        indexed = rag_engine.ingest_document(
+            text=req.page_content,
+            topic=req.topic,
+            source=f"Page: {req.topic}",
+            course=req.topic,
+            extra_metadata={"page_url": req.page_url or "", "capture_type": "page"},
+        )
+        chunks = rag_engine.retrieve(
+            "main ideas explanation summary", topic=req.topic, top_k=10,
+            document_id=indexed["document_id"],
+        )
+        summary = llm_service.summarize_with_rag(req.topic, chunks)
+        return {
+            "summary": summary,
             "active_provider": llm_service._last_provider_used,
             "sources": chunks,
         }
@@ -102,7 +132,19 @@ def retrieve_chunks(req: RetrieveRequest) -> Dict[str, Any]:
 def generate_quiz(req: GenerateQuizRequest) -> Dict[str, Any]:
     start = time.perf_counter()
     try:
-        chunks = rag_engine.retrieve(req.topic, topic=req.topic, top_k=8)
+        active_document_id = None
+        if req.source_context:
+            indexed = rag_engine.ingest_document(
+                text=req.source_context,
+                topic=req.topic,
+                source=f"Active page: {req.topic}",
+                course=req.topic,
+                extra_metadata={"page_url": req.page_url or "", "capture_type": "quiz_context"},
+            )
+            active_document_id = indexed["document_id"]
+        chunks = rag_engine.retrieve(
+            req.topic, topic=req.topic, top_k=8, document_id=active_document_id
+        )
         if not chunks:
             raise ValueError(
                 f"No indexed lesson content exists for '{req.topic}'. Add source text first."

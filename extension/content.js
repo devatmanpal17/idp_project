@@ -23,6 +23,7 @@
     revisits: 0,
     quiz: null,
     quizId: null,
+    pageContext: "",
     lastCaptureAt: Date.now(),
   };
   let host;
@@ -55,6 +56,12 @@
       .map((node) => node.textContent?.replace(/\s+/g, " ").trim())
       .filter((text) => text && text.length > 20);
     return [...new Set(blocks)].join("\n").slice(0, 11000);
+  }
+
+  function activePageContext() {
+    const page = state.pageContext || learningPageText();
+    const captions = state.transcript.map((item) => `[${item.time}] ${item.text}`).join("\n");
+    return [page, captions].filter(Boolean).join("\n\n").slice(0, 50000);
   }
 
   function timestamp() {
@@ -160,7 +167,7 @@
           <div class="lesson" id="lesson"></div>
           <div class="meterline"><span>Verified lesson mastery</span><strong id="mastery">Not assessed</strong></div><div class="meter"><span id="meter" style="width:0%"></span></div>
           <div class="tabs"><button class="tab active" data-tab="ask">Ask tutor</button><button class="tab" data-tab="quiz">Adaptive quiz</button></div>
-          <div id="askPane"><textarea id="question" placeholder="Ask about this lesson or your captured captions…"></textarea><button class="primary" id="ask">Ask from transcript</button><div id="answer"></div></div>
+          <div id="askPane"><button class="primary" id="summarize">Teach me this page</button><textarea id="question" placeholder="Ask anything about this page or video..."></textarea><button class="primary" id="ask">Ask about this page</button><div id="answer"></div></div>
           <div id="quizPane" hidden><button class="primary" id="generate">Generate quiz from this lesson</button><div id="quiz"></div></div>
           <div class="status" id="status">Waiting for visible captions · <span id="count">0</span> captured</div>
         </div>
@@ -190,6 +197,7 @@
     });
     shadow.querySelectorAll(".tab").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
     shadow.getElementById("ask").addEventListener("click", askQuestion);
+    shadow.getElementById("summarize").addEventListener("click", summarizePage);
     shadow.getElementById("generate").addEventListener("click", generateQuiz);
     refreshHeader();
   }
@@ -253,6 +261,7 @@
       const data = await send("ASK", {
         question,
         topic: topic(),
+        transcript_context: activePageContext().slice(0, 12000),
         top_k: 5,
       });
       const answer = document.createElement("div");
@@ -273,7 +282,34 @@
       setStatus(error.message, "error");
     } finally {
       button.disabled = false;
-      button.textContent = "Find it in my notes";
+      button.textContent = "Ask about this page";
+    }
+  }
+
+  async function summarizePage() {
+    const button = shadow.getElementById("summarize");
+    const context = activePageContext();
+    if (context.length < 20) return setStatus("I could not find enough readable page or video text.", "error");
+    button.disabled = true;
+    button.textContent = "Building your lesson...";
+    shadow.getElementById("answer").replaceChildren();
+    try {
+      const data = await send("SUMMARIZE", {
+        topic: topic(),
+        page_content: context,
+        page_url: location.href,
+      });
+      const answer = document.createElement("div");
+      answer.className = "answer";
+      answer.textContent = data.summary;
+      shadow.getElementById("answer").appendChild(answer);
+      shadow.getElementById("question").focus();
+      setStatus("Page lesson ready. Ask a follow-up question below.", "ok");
+    } catch (error) {
+      setStatus(error.message, "error");
+    } finally {
+      button.disabled = false;
+      button.textContent = "Teach me this page again";
     }
   }
 
@@ -284,6 +320,9 @@
     try {
       const data = await send("QUIZ", {
         topic: topic(),
+        source_context: activePageContext(),
+        page_url: location.href,
+        language: "English",
         mastery_score: state.mastery,
         quiz_perf_pct: state.quizPerf,
         time_on_section_pct: state.minutesOnSection,
@@ -376,9 +415,11 @@
     if (message?.type === "CHAIGARAM_CAPTURE_PAGE") {
       const text = learningPageText();
       if (text) {
-        ingest(text, "page");
+        state.pageContext = text;
         setOpen(true);
-        setStatus("This page is now part of your study library.", "ok");
+        switchTab("ask");
+        setStatus("Reading this page and preparing your lesson...", "ok");
+        summarizePage();
       }
       sendResponse({ ok: Boolean(text) });
     }

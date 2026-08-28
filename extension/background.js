@@ -1,5 +1,6 @@
 const DEFAULT_SETTINGS = {
   apiBaseUrl: "http://localhost:8000",
+  dashboardUrl: "http://localhost:8080",
   autoCapture: true,
 };
 
@@ -35,6 +36,10 @@ const handlers = {
     body: JSON.stringify(payload),
   }),
   ASK: (payload) => apiRequest("/api/rag/ask", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }),
+  SUMMARIZE: (payload) => apiRequest("/api/rag/summarize", {
     method: "POST",
     body: JSON.stringify(payload),
   }),

@@ -112,10 +112,20 @@ class RAGEngine:
         self.persist_directory = persist_directory or Path(
             os.getenv("CHROMA_PERSIST_DIR", str(root / "data" / "chroma"))
         )
-        self.persist_directory.mkdir(parents=True, exist_ok=True)
         self._lock = RLock()
         self.embeddings = OllamaEmbeddings()
-        self.client = chromadb.PersistentClient(path=str(self.persist_directory))
+        chroma_host = os.getenv("CHROMA_HOST", "").strip()
+        if chroma_host:
+            self.client = chromadb.HttpClient(
+                host=chroma_host,
+                port=int(os.getenv("CHROMA_PORT", "8000")),
+                ssl=os.getenv("CHROMA_SSL", "false").lower() == "true",
+            )
+            self.storage_backend = f"remote:{chroma_host}"
+        else:
+            self.persist_directory.mkdir(parents=True, exist_ok=True)
+            self.client = chromadb.PersistentClient(path=str(self.persist_directory))
+            self.storage_backend = "local"
         self.collection = self.client.get_or_create_collection(
             name=os.getenv("CHROMA_COLLECTION", "chaigaram_lessons"),
             metadata={"hnsw:space": "cosine"},
@@ -232,7 +242,8 @@ class RAGEngine:
         ]
 
     def retrieve(
-        self, query: str, topic: Optional[str] = None, top_k: int = 6
+        self, query: str, topic: Optional[str] = None, top_k: int = 6,
+        document_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         if self.count == 0:
             return []
@@ -246,7 +257,11 @@ class RAGEngine:
             "n_results": requested,
             "include": ["documents", "metadatas", "distances"],
         }
-        if topic and self._topic_exists(topic):
+        if document_id:
+            document_records = self.collection.get(where={"document_id": document_id}, include=[])
+            kwargs["where"] = {"document_id": document_id}
+            kwargs["n_results"] = min(requested, len(document_records.get("ids", [])))
+        elif topic and self._topic_exists(topic):
             topic_records = self.collection.get(where={"topic": topic}, include=[])
             kwargs["where"] = {"topic": topic}
             kwargs["n_results"] = min(requested, len(topic_records.get("ids", [])))
@@ -283,6 +298,7 @@ class RAGEngine:
             "vector_database": "chromadb",
             "collection": self.collection.name,
             "persist_directory": str(self.persist_directory),
+            "storage_backend": self.storage_backend,
             "indexed_chunks": self.count,
             "topics_indexed": self.topics(),
             "embedding_service": self.embeddings.health(),

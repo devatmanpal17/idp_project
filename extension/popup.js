@@ -34,6 +34,12 @@ document.getElementById("open").addEventListener("click", async () => {
   catch (_) { statusNode.textContent = "This browser page cannot run extensions. Try a normal website."; }
 });
 
+document.getElementById("dashboard").addEventListener("click", async () => {
+  const settings = await chrome.storage.sync.get({ dashboardUrl: "http://localhost:8080" });
+  await chrome.tabs.create({ url: settings.dashboardUrl });
+  window.close();
+});
+
 document.getElementById("capturePage").addEventListener("click", async () => {
   try { await sendToPage("CHAIGARAM_CAPTURE_PAGE"); window.close(); }
   catch (_) { statusNode.textContent = "Open a normal article, lesson, documentation, or video page first."; }

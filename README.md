@@ -205,6 +205,8 @@ OLLAMA_CHAT_MODEL=llama3.2:3b
 CHROMA_PERSIST_DIR=./data/chroma
 ```
 
+For production, set `DATABASE_URL` to a managed PostgreSQL connection string (for example Supabase or Neon) to persist quiz sessions and mastery data online. Set `CHROMA_HOST`, `CHROMA_PORT`, and `CHROMA_SSL=true` to store captured page/video evidence in a hosted Chroma deployment. If these variables are omitted, ChaiGaram keeps using local SQLite and persistent Chroma for development.
+
 There is no fabricated offline fallback. The API reports `setup_required` until Ollama and both models are ready.
 
 ### 2. Start the Backend API

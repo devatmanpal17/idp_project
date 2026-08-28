@@ -13,4 +13,5 @@ small { margin-top: 5px; color: #aaa398; font: 10px ui-monospace, monospace; let
 button { width: 100%; margin-top: 8px; padding: 11px 12px; border: 2px solid #f5f0e5; color: #f5f0e5; background: #252421; box-shadow: 3px 3px 0 #070707; font-weight: 850; text-align: left; cursor: pointer; transition: 120ms ease; }
 button:hover { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #070707; }
 .primary { display: flex; justify-content: space-between; color: #171716; background: #ff5a36; }
+.dashboard { display: flex; justify-content: space-between; color: #171716; background: #e8f24e; }
 .link { border: 0; box-shadow: none; color: #8f897f; background: transparent; font: 10px ui-monospace, monospace; text-align: center; }

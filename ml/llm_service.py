@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Literal
@@ -125,10 +126,23 @@ class LLMService:
         if not context_chunks:
             raise ValueError("No indexed evidence was found for this question.")
         return self._chat(
-            "You are a grounded course assistant. Use only the supplied evidence. "
+            "You are a grounded course assistant. Always answer in clear English. Use only the supplied evidence. "
             "Cite every factual claim with chunk IDs in square brackets. If evidence is "
             "insufficient, say so explicitly and do not use outside knowledge.",
             f"Topic: {topic}\nQuestion: {question}\n\nEvidence:\n{self._context(context_chunks)}",
+        )
+
+    def summarize_with_rag(
+        self, topic: str, context_chunks: List[Dict[str, Any]]
+    ) -> str:
+        if not context_chunks:
+            raise ValueError("No page or video evidence was found to summarize.")
+        return self._chat(
+            "You are a patient English-speaking tutor. Teach only from the supplied evidence. "
+            "Start with a concise plain-English summary, then explain the key ideas in a short "
+            "structured lesson. Mention uncertainty or missing context instead of inventing facts. "
+            "Cite factual claims with chunk IDs in square brackets.",
+            f"Teach me this page or video.\nTopic: {topic}\n\nEvidence:\n{self._context(context_chunks)}",
         )
 
     def generate_quiz_with_rag(
@@ -146,19 +160,30 @@ class LLMService:
         schema = QuizPayload.model_json_schema()
         valid_ids = [chunk["chunk_id"] for chunk in context_chunks]
         prompt = (
-            f"Create exactly {count} rigorous multiple-choice questions about {topic}. "
+            f"Create exactly {count} rigorous multiple-choice questions in English about {topic}. "
             f"Learner mastery is {mastery_score:.1f}/100 and target difficulty is {difficulty:.2f}. "
-            "Every question must be answerable only from the evidence. Use four plausible, "
+            "Every question, choice, and explanation must be written only in English and must be "
+            "answerable only from the evidence. Test specific ideas actually stated in the evidence; "
+            "never create generic questions from the title alone. Use four plausible, "
             "distinct choices. The answer must exactly equal one choice. Include one or more "
             f"citation IDs chosen only from this list: {valid_ids}. Vary Bloom levels appropriately.\n\n"
             f"Evidence:\n{self._context(context_chunks)}\n\n"
             f"Return JSON matching this schema: {json.dumps(schema)}"
         )
         raw = self._chat(
-            "You are an assessment designer. Never invent facts or citations. Return only schema-valid JSON.",
+            "You are an English-language assessment designer. Never invent facts or citations. "
+            "Do not output Hindi or Devanagari text. Return only schema-valid JSON.",
             prompt,
             schema=schema,
         )
+        if re.search(r"[\u0900-\u097f]", raw):
+            raw = self._chat(
+                "You are an English-language assessment designer. Output English only. "
+                "Do not use Hindi, Devanagari, invented facts, or invented citations. "
+                "Return only schema-valid JSON.",
+                prompt,
+                schema=schema,
+            )
         try:
             parsed = QuizPayload.model_validate_json(raw)
         except ValidationError as exc:

@@ -2,6 +2,10 @@
 
 This is an installable Chrome/Edge Manifest V3 extension for the ChaiGaram backend. It works on any normal HTTP or HTTPS page: articles, documentation, LMS lessons, course platforms, blogs, and video sites. It can capture visible captions, selected text, or the useful reading content of a page, then answer grounded questions and generate adaptive quizzes.
 
+The popup includes **Open my dashboard**. Its URL can be changed in Connection settings, along with the backend URL, so the same build works with local development or a deployed website/API.
+
+**Learn this page** now indexes the active page/video context, opens an English teaching summary, and leaves a follow-up box for any question about that source. Quizzes receive the same active-source context and are explicitly generated in English.
+
 ## Install for development
 
 1. Start the backend from the `chaigaram` directory:
