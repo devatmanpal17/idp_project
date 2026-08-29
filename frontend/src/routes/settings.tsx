@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Cpu, Database, RefreshCw, Save, Server } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/chaigaram/primitives";
-import { checkAIHealth, updateAIConfig } from "@/lib/ai-client";
+import { checkAIHealth, updateAIConfig, type AIHealth } from "@/lib/ai-client";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({ meta: [{ title: "Settings | ChaiGaram" }] }),
@@ -11,7 +11,7 @@ export const Route = createFileRoute("/settings")({
 
 function SettingsScreen() {
   const [model, setModel] = useState("");
-  const [health, setHealth] = useState<Record<string, any> | null>(null);
+  const [health, setHealth] = useState<AIHealth | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 

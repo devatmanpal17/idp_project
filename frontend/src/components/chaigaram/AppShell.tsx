@@ -1,8 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BookOpen, CalendarClock, Compass, LayoutGrid, ListChecks, Menu, MonitorSmartphone, Moon, Radar, Settings2, Sun, X } from "lucide-react";
+import { BookOpen, CalendarClock, Compass, LayoutGrid, ListChecks, Menu, MonitorSmartphone, Moon, Radar, Settings2, Sun, UserRound, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { checkAIHealth } from "@/lib/ai-client";
+import { checkAIHealth, type AIHealth } from "@/lib/ai-client";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const NAV = [
   { to: "/", label: "Overview", icon: LayoutGrid },
@@ -12,6 +14,7 @@ const NAV = [
   { to: "/study-plan", label: "Plan", icon: CalendarClock },
   { to: "/recommendations", label: "Next up", icon: Compass },
   { to: "/simulator", label: "Extension", icon: MonitorSmartphone },
+  { to: "/profile", label: "Profile", icon: UserRound },
   { to: "/settings", label: "Settings", icon: Settings2 },
 ] as const;
 
@@ -34,8 +37,9 @@ function useTheme() {
 export function AppShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { light, toggle } = useTheme();
+  const { user, profile, loading: authLoading } = useAuth();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const [health, setHealth] = useState<Record<string, unknown> | null>(null);
+  const [health, setHealth] = useState<AIHealth | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -66,6 +70,30 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="ml-auto flex items-center gap-2">
             <div className="hidden items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-[10px] text-muted-foreground sm:flex"><span className={cn("h-1.5 w-1.5 rounded-full", ready ? "bg-positive" : "bg-warn")} />{ready ? `${String(health?.indexed_chunks ?? 0)} notes indexed` : "Engine offline"}</div>
             <button onClick={toggle} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground transition hover:bg-surface-2 hover:text-foreground" title="Change theme">{light ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}</button>
+            <Link
+              to="/profile"
+              className={cn(
+                "flex h-9 items-center gap-2 rounded-full border border-border bg-surface/70 transition hover:border-primary/40 hover:bg-surface-2",
+                user ? "p-0.5 pr-2.5" : "px-3 text-[11px] font-semibold",
+              )}
+              aria-label={user ? "Open your profile" : "Sign in"}
+            >
+              {user ? (
+                <>
+                  <Avatar className="h-8 w-8 border border-border">
+                    <AvatarImage src={user.photoURL ?? undefined} alt="" referrerPolicy="no-referrer" />
+                    <AvatarFallback className="bg-primary/15 text-[11px] font-bold text-primary">
+                      {(profile?.displayName || user.displayName || user.email || "U").charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="hidden max-w-24 truncate text-[11px] font-semibold sm:block">
+                    {profile?.displayName || user.displayName || "Profile"}
+                  </span>
+                </>
+              ) : (
+                <><UserRound className="h-3.5 w-3.5" />{authLoading ? "Loading" : "Sign in"}</>
+              )}
+            </Link>
             <button onClick={() => setMenuOpen((open) => !open)} className="grid h-9 w-9 place-items-center rounded-full text-foreground transition hover:bg-surface-2 xl:hidden" aria-label="Toggle navigation" aria-expanded={menuOpen}>{menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}</button>
           </div>
         </div>

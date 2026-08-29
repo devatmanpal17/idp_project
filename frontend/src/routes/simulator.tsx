@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { CheckCircle2, Database, RefreshCw, Server, ShieldCheck } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/chaigaram/primitives";
-import { checkAIHealth, fetchIndexedTopics } from "@/lib/ai-client";
+import { checkAIHealth, fetchIndexedTopics, type AIHealth } from "@/lib/ai-client";
 
 export const Route = createFileRoute("/simulator")({
   head: () => ({
@@ -15,7 +15,7 @@ export const Route = createFileRoute("/simulator")({
 });
 
 function ExtensionScreen() {
-  const [health, setHealth] = useState<Record<string, any> | null>(null);
+  const [health, setHealth] = useState<AIHealth | null>(null);
   const [topics, setTopics] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 

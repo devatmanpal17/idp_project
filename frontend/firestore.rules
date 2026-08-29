@@ -1,0 +1,30 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read: if signedInAs(userId);
+      allow create: if signedInAs(userId) && validProfile(userId);
+      allow update: if signedInAs(userId) && validProfile(userId);
+      allow delete: if signedInAs(userId);
+    }
+
+    function signedInAs(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function validProfile(userId) {
+      return request.resource.data.uid == userId
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 80
+        && request.resource.data.email is string
+        && request.resource.data.photoURL is string
+        && request.resource.data.bio is string
+        && request.resource.data.bio.size() <= 500
+        && request.resource.data.learningGoal is string
+        && request.resource.data.learningGoal.size() <= 200
+        && request.resource.data.preferredLanguage is string
+        && request.resource.data.preferredLanguage.size() <= 40;
+    }
+  }
+}

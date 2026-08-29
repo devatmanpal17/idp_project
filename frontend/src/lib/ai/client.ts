@@ -4,6 +4,20 @@ import type { QuizEvaluationResult, RAGChunk, RAGQuizResponse } from "./types";
 
 const BASE_URL = "/api";
 
+export interface AIHealth {
+  status?: string;
+  indexed_chunks?: number;
+  active_ai_provider?: string;
+  llm_service?: {
+    model?: string;
+    model_ready?: boolean;
+  };
+  embedding_service?: {
+    embedding_model?: string;
+    embedding_model_ready?: boolean;
+  };
+}
+
 async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -20,7 +34,7 @@ async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function checkAIHealth() {
-  return requestJSON<Record<string, unknown>>("/health");
+  return requestJSON<AIHealth>("/health");
 }
 
 export async function fetchIndexedTopics(): Promise<string[]> {
