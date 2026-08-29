@@ -52,6 +52,11 @@ const handlers = {
     body: JSON.stringify(payload),
   }),
   TOPIC_STATE: (payload) => apiRequest(`/api/learning/topic-state?topic=${encodeURIComponent(payload.topic)}`),
+  JOB_START: (payload) => apiRequest("/api/jobs", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }),
+  JOB_STATUS: (payload) => apiRequest(`/api/jobs/${encodeURIComponent(payload.job_id)}`),
 };
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

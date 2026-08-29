@@ -14,7 +14,8 @@ async function sendToPage(type) {
   if (!tab?.id) throw new Error("No active webpage");
   try {
     return await chrome.tabs.sendMessage(tab.id, { type });
-  } catch (_) {
+  } catch (error) {
+    if (!/Receiving end does not exist|Could not establish connection/i.test(error?.message || "")) throw error;
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
     return chrome.tabs.sendMessage(tab.id, { type });
   }

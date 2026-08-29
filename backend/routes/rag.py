@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import re
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException
@@ -31,6 +32,18 @@ from ml.llm_service import LLMConfigurationError
 from ml.rag_engine import RAGConfigurationError
 
 router = APIRouter()
+
+
+def _require_source_words(text: str, source_type: str, minimum: int) -> None:
+    countable_text = re.sub(r"^\[[^\]]+\]\s*", "", text, flags=re.MULTILINE) if source_type == "video" else text
+    word_count = len(countable_text.split())
+    if source_type == "video" and word_count < minimum:
+        raise ValueError(
+            f"Only {word_count} caption words were captured from this video. "
+            "Turn on English captions and watch a little more before trying again."
+        )
+    if source_type == "document" and word_count < 20:
+        raise ValueError("The active document does not contain enough readable text.")
 
 
 def _service_error(exc: Exception) -> HTTPException:
@@ -65,11 +78,16 @@ def ask_lesson(req: AskRequest) -> Dict[str, Any]:
     try:
         active_document_id = None
         if req.transcript_context:
+            _require_source_words(req.transcript_context, req.source_type, 8)
             indexed = rag_engine.ingest_transcript(
                 text=req.transcript_context,
                 topic=req.topic or "Current lesson",
                 course="Question context",
                 timestamp="current",
+                extra_metadata={
+                    "source_type": req.source_type,
+                    "observed_until_seconds": req.observed_until_seconds,
+                },
             )
             active_document_id = indexed["document_id"]
         chunks = rag_engine.retrieve(
@@ -89,12 +107,18 @@ def ask_lesson(req: AskRequest) -> Dict[str, Any]:
 @router.post("/api/rag/summarize")
 def summarize_page(req: SummarizeRequest) -> Dict[str, Any]:
     try:
+        _require_source_words(req.page_content, req.source_type, 20)
         indexed = rag_engine.ingest_document(
             text=req.page_content,
             topic=req.topic,
             source=f"Page: {req.topic}",
             course=req.topic,
-            extra_metadata={"page_url": req.page_url or "", "capture_type": "page"},
+            extra_metadata={
+                "page_url": req.page_url or "",
+                "capture_type": "page",
+                "source_type": req.source_type,
+                "observed_until_seconds": req.observed_until_seconds,
+            },
         )
         chunks = rag_engine.retrieve(
             "main ideas explanation summary", topic=req.topic, top_k=10,
@@ -134,16 +158,25 @@ def generate_quiz(req: GenerateQuizRequest) -> Dict[str, Any]:
     try:
         active_document_id = None
         if req.source_context:
+            _require_source_words(
+                req.source_context, req.source_type, max(50, req.question_count * 15)
+            )
             indexed = rag_engine.ingest_document(
                 text=req.source_context,
                 topic=req.topic,
                 source=f"Active page: {req.topic}",
                 course=req.topic,
-                extra_metadata={"page_url": req.page_url or "", "capture_type": "quiz_context"},
+                extra_metadata={
+                    "page_url": req.page_url or "",
+                    "capture_type": "quiz_context",
+                    "source_type": req.source_type,
+                    "observed_until_seconds": req.observed_until_seconds,
+                },
             )
             active_document_id = indexed["document_id"]
         chunks = rag_engine.retrieve(
-            req.topic, topic=req.topic, top_k=8, document_id=active_document_id
+            req.topic, topic=req.topic, top_k=8, document_id=active_document_id,
+            require_topic=active_document_id is None,
         )
         if not chunks:
             raise ValueError(

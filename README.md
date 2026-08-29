@@ -182,6 +182,8 @@ $$P(\theta) = \frac{1}{1 + e^{-1.7 \cdot a \cdot (\theta - b)}}$$
 8. **Browser Extension**: Installable Chrome/Edge companion that captures course captions, answers grounded questions, runs secure adaptive quizzes, and drives the live dashboard.
 9. **Settings**: Local Ollama model selection and live Chroma/Ollama readiness.
 
+Long-running tutor and quiz requests use a backend job API (`POST /api/jobs`, then `GET /api/jobs/{job_id}`), so Chrome Manifest V3 service-worker restarts cannot close an in-progress model response.
+
 ---
 
 ## 🚀 Getting Started

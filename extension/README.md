@@ -6,6 +6,8 @@ The popup includes **Open my dashboard**. Its URL can be changed in Connection s
 
 **Learn this page** now indexes the active page/video context, opens an English teaching summary, and leaves a follow-up box for any question about that source. Quizzes receive the same active-source context and are explicitly generated in English.
 
+On video pages, ChaiGaram uses only caption cues observed up to the current playback position. It does not use recommendations, comments, future captions, or content retained from a previous video. Keep English captions enabled; quiz generation waits until at least 50 caption words are available. On document pages, navigation, sidebars, related links, comments, and advertisements are removed before the lesson is indexed.
+
 ## Install for development
 
 1. Start the backend from the `chaigaram` directory:

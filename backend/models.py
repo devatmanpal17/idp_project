@@ -3,7 +3,7 @@ Pydantic request / response models for the ChaiGaram AI API.
 """
 
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Literal
 
 
 class RetrieveRequest(BaseModel):
@@ -15,14 +15,18 @@ class RetrieveRequest(BaseModel):
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=2, max_length=2000)
     topic: Optional[str] = Field(default=None, max_length=300)
-    transcript_context: Optional[str] = Field(default=None, max_length=12000)
+    transcript_context: Optional[str] = Field(default=None, max_length=50000)
     top_k: int = Field(default=5, ge=1, le=10)
+    source_type: Literal["document", "video"] = "document"
+    observed_until_seconds: float = Field(default=0, ge=0)
 
 
 class SummarizeRequest(BaseModel):
     topic: str = Field(..., min_length=2, max_length=300)
     page_content: str = Field(..., min_length=20, max_length=50000)
     page_url: Optional[str] = Field(default="", max_length=4000)
+    source_type: Literal["document", "video"] = "document"
+    observed_until_seconds: float = Field(default=0, ge=0)
 
 
 class GenerateQuizRequest(BaseModel):
@@ -36,6 +40,13 @@ class GenerateQuizRequest(BaseModel):
     source_context: Optional[str] = Field(default=None, max_length=50000)
     page_url: Optional[str] = Field(default="", max_length=4000)
     language: str = Field(default="English", pattern="^English$")
+    source_type: Literal["document", "video"] = "document"
+    observed_until_seconds: float = Field(default=0, ge=0)
+
+
+class AIJobRequest(BaseModel):
+    operation: Literal["ask", "summarize", "quiz"]
+    payload: Dict[str, Any]
 
 
 class EvaluateQuizRequest(BaseModel):

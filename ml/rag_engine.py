@@ -243,9 +243,11 @@ class RAGEngine:
 
     def retrieve(
         self, query: str, topic: Optional[str] = None, top_k: int = 6,
-        document_id: Optional[str] = None,
+        document_id: Optional[str] = None, require_topic: bool = False,
     ) -> List[Dict[str, Any]]:
         if self.count == 0:
+            return []
+        if require_topic and topic and not self._topic_exists(topic):
             return []
         query_text = _normalise(f"{topic or ''} {query}")
         if not query_text:
@@ -259,9 +261,13 @@ class RAGEngine:
         }
         if document_id:
             document_records = self.collection.get(where={"document_id": document_id}, include=[])
+            if not document_records.get("ids"):
+                return []
             kwargs["where"] = {"document_id": document_id}
             kwargs["n_results"] = min(requested, len(document_records.get("ids", [])))
-        elif topic and self._topic_exists(topic):
+        elif topic:
+            if not self._topic_exists(topic):
+                return []
             topic_records = self.collection.get(where={"topic": topic}, include=[])
             kwargs["where"] = {"topic": topic}
             kwargs["n_results"] = min(requested, len(topic_records.get("ids", [])))
