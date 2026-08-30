@@ -93,6 +93,16 @@ function CourseDetail() {
           </div>
 
           <div className="flex items-center gap-4">
+            {course.source_url && (
+              <a
+                href={course.source_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90"
+              >
+                Continue course <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            )}
             <div className="rounded-lg border border-border bg-surface-2 p-3 text-center">
               <span className="text-[10px] text-muted-foreground">VIDEO WATCHED</span>
               <div className="num text-xl font-bold text-accent">{course.completion_pct}%</div>

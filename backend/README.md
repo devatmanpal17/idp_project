@@ -10,6 +10,7 @@ The `backend/` folder contains the FastAPI REST API layer for ChaiGaram.
   - `health.py`: Health checks (`/api/health`).
   - `rag.py`: RAG context retrieval, question generation, and quiz scoring endpoints (`/api/rag/*`).
   - `jobs.py`: asynchronous tutor/summary/quiz jobs (`POST /api/jobs`, `GET /api/jobs/{job_id}`) for browser-extension-safe polling.
+  - `learning_data.py`: Courses, mastery, study plan, recommendations, visit history, and indexed-source deletion (`/api/learning/*`).
   - `recommendations.py`: Spaced repetition study recommendations (`/api/recommendations/smart`).
   - `settings.py`: AI provider configuration (`/api/settings/ai-config`).
 - **`run.py`**: Direct executable runner (`python backend/run.py`).

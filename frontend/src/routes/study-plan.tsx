@@ -22,8 +22,9 @@ import {
   Sparkles,
   TrendingDown,
 } from "lucide-react";
-import { studyEventsQuery, topicsQuery, STUDY_EVENT_META, retentionCurve } from "@/lib/chaigaram";
+import { studyEventsQuery, topicsQuery, STUDY_EVENT_META, retentionCurve, type StudyEvent, type Topic } from "@/lib/chaigaram";
 import { Panel, PanelHeader, MasteryPill, chartAxis } from "@/components/chaigaram/primitives";
+import { QuizGenerator } from "@/components/chaigaram/QuizGenerator";
 
 export const Route = createFileRoute("/study-plan")({
   head: () => ({
@@ -39,12 +40,12 @@ export const Route = createFileRoute("/study-plan")({
 });
 
 function StudyPlanScreen() {
-  const { data: studyEvents = [] } = useQuery(studyEventsQuery);
+  const { data: studyEvents = [], isLoading, error } = useQuery(studyEventsQuery);
   const { data: topics = [] } = useQuery(topicsQuery);
 
   const [calendarView, setCalendarView] = useState<"week" | "month">("week");
   const [selectedTopicId, setSelectedTopicId] = useState<string>(topics[0]?.id || "");
-  const [googleCalendarConnected, setGoogleCalendarConnected] = useState(false);
+  const [activeDrillTopic, setActiveDrillTopic] = useState<string | null>(null);
 
   const selectedTopic = useMemo(() => {
     return (
@@ -52,6 +53,11 @@ function StudyPlanScreen() {
       topics[0] || { id: "", title: "No indexed topic", mastery_score: 0 }
     );
   }, [topics, selectedTopicId]);
+
+  const visibleStudyEvents = useMemo(() => {
+    const cutoff = Date.now() + (calendarView === "week" ? 7 : 31) * 86_400_000;
+    return studyEvents.filter((event) => new Date(event.scheduled_at).getTime() <= cutoff);
+  }, [calendarView, studyEvents]);
 
   // Compute Ebbinghaus retention decay curve data
   const retentionData = useMemo(() => {
@@ -106,6 +112,23 @@ function StudyPlanScreen() {
       </div>
 
       {/* Main Grid: Calendar Timeline (2 cols) & Retention Curve (1 col) */}
+      {error && (
+        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/8 p-4 text-xs text-destructive">
+          {error instanceof Error ? error.message : "Your study plan could not be loaded."}
+        </div>
+      )}
+      {activeDrillTopic && (
+        <Panel className="border-primary/40 p-5">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div><p className="label-xs text-primary">Scheduled practice</p><h2 className="text-base font-semibold">{activeDrillTopic}</h2></div>
+            <button onClick={() => setActiveDrillTopic(null)} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
+          </div>
+          <QuizGenerator
+            topicTitle={activeDrillTopic}
+            masteryScore={topics.find((topic) => topic.title === activeDrillTopic)?.mastery_score ?? 0}
+          />
+        </Panel>
+      )}
       <div className="grid grid-cols-1 gap-7 xl:grid-cols-3">
         {/* Calendar Events Timeline */}
         <Panel className="lg:col-span-2">
@@ -114,7 +137,15 @@ function StudyPlanScreen() {
             subtitle="Color-coded: Review Reminders (Primary), Quiz Sessions (Accent), Deep Study Blocks (Warn)"
           />
           <div className="divide-y divide-border p-4">
-            {studyEvents.map((evt) => {
+            {isLoading && [0, 1, 2].map((item) => <div key={item} className="my-2 h-14 animate-pulse rounded-lg bg-surface-2" />)}
+            {!isLoading && visibleStudyEvents.length === 0 && (
+              <div className="px-4 py-12 text-center">
+                <Calendar className="mx-auto h-6 w-6 text-muted-foreground" />
+                <p className="mt-3 text-sm font-semibold">No scheduled reviews yet</p>
+                <p className="mt-1 text-xs text-muted-foreground">Capture a learning source to generate an adaptive review schedule.</p>
+              </div>
+            )}
+            {visibleStudyEvents.map((evt) => {
               const topicObj = topics.find((t) => t.id === evt.topic_id);
               const meta = STUDY_EVENT_META[evt.event_type] || {
                 label: "Study Event",
@@ -154,9 +185,13 @@ function StudyPlanScreen() {
                         <CheckCircle2 className="h-3 w-3" /> Done
                       </span>
                     ) : (
-                      <span className="rounded border border-border bg-surface-2 px-2 py-0.5 text-[10px] text-muted-foreground">
-                        Scheduled
-                      </span>
+                      <button
+                        onClick={() => topicObj && setActiveDrillTopic(topicObj.title)}
+                        disabled={!topicObj}
+                        className="inline-flex items-center gap-1.5 rounded bg-primary/12 px-2.5 py-1 text-[10px] font-semibold text-primary transition hover:bg-primary/20 disabled:opacity-40"
+                      >
+                        <Sparkles className="h-3 w-3" /> Start session
+                      </button>
                     )}
                   </div>
                 </div>
@@ -173,27 +208,24 @@ function StudyPlanScreen() {
                 <div className="grid h-7 w-7 place-items-center rounded bg-primary/10 text-primary">
                   <CalendarCheck className="h-4 w-4" />
                 </div>
-                <h3 className="text-xs font-semibold text-foreground">Google Calendar Sync</h3>
+                <h3 className="text-xs font-semibold text-foreground">Calendar export</h3>
               </div>
               <button
-                onClick={() => setGoogleCalendarConnected(!googleCalendarConnected)}
-                className={`num rounded-full px-2.5 py-0.5 text-[10px] font-semibold transition ${
-                  googleCalendarConnected
-                    ? "bg-positive/15 text-positive"
-                    : "bg-muted text-muted-foreground"
-                }`}
+                onClick={() => downloadCalendar(visibleStudyEvents, topics)}
+                disabled={visibleStudyEvents.length === 0}
+                className="num rounded-full bg-primary/12 px-2.5 py-1 text-[10px] font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {googleCalendarConnected ? "Connected" : "Disconnected"}
+                Download .ics
               </button>
             </div>
 
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-              ChaiGaram automatically pushes spaced-repetition study blocks and practice quiz
-              reminders directly to your primary calendar.
+              Download the visible study schedule and open it with Google Calendar, Outlook, Apple
+              Calendar, or another calendar app.
             </p>
 
             <div className="mt-4 border-t border-border pt-3 text-[11px] text-muted-foreground">
-              <span className="num text-foreground">Next sync:</span> Instant on schedule generation
+              <span className="num text-foreground">Current view:</span> {visibleStudyEvents.length} scheduled event{visibleStudyEvents.length === 1 ? "" : "s"}
             </div>
           </Panel>
 
@@ -204,7 +236,7 @@ function StudyPlanScreen() {
                 Ebbinghaus Retention Decay Model
               </h3>
               <select
-                value={selectedTopicId}
+                value={selectedTopicId || topics[0]?.id || ""}
                 onChange={(e) => setSelectedTopicId(e.target.value)}
                 className="max-w-[130px] truncate rounded border border-border bg-surface-2 px-2 py-1 text-[10px] text-foreground focus:border-primary"
               >
@@ -259,4 +291,39 @@ function StudyPlanScreen() {
       </div>
     </div>
   );
+}
+
+function downloadCalendar(events: StudyEvent[], topics: Topic[]) {
+  if (!events.length) return;
+  const formatUtc = (value: Date) => value.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const escape = (value: string) => value.replace(/\\/g, "\\\\").replace(/,/g, "\\,").replace(/;/g, "\\;").replace(/\n/g, "\\n");
+  const now = formatUtc(new Date());
+  const calendar = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//ChaiGaram//Study Plan//EN",
+    "CALSCALE:GREGORIAN",
+    ...events.flatMap((event) => {
+      const start = new Date(event.scheduled_at);
+      const end = new Date(start.getTime() + 30 * 60_000);
+      const topic = topics.find((item) => item.id === event.topic_id)?.title || "Learning topic";
+      return [
+        "BEGIN:VEVENT",
+        `UID:${event.id}@chaigaram.local`,
+        `DTSTAMP:${now}`,
+        `DTSTART:${formatUtc(start)}`,
+        `DTEND:${formatUtc(end)}`,
+        `SUMMARY:${escape(`ChaiGaram: ${topic}`)}`,
+        `DESCRIPTION:${escape(`${STUDY_EVENT_META[event.event_type]?.label || "Study session"} generated from your learning history.`)}`,
+        "END:VEVENT",
+      ];
+    }),
+    "END:VCALENDAR",
+  ].join("\r\n");
+  const href = URL.createObjectURL(new Blob([calendar], { type: "text/calendar;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = "chaigaram-study-plan.ics";
+  anchor.click();
+  URL.revokeObjectURL(href);
 }

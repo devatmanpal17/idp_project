@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BookOpen, CalendarClock, Compass, LayoutGrid, ListChecks, Menu, MonitorSmartphone, Moon, Radar, Settings2, Sun, UserRound, X } from "lucide-react";
+import { BookOpen, CalendarClock, Compass, History, LayoutGrid, ListChecks, Menu, MonitorSmartphone, Moon, Radar, Settings2, Sun, UserRound, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { checkAIHealth, type AIHealth } from "@/lib/ai-client";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -13,6 +13,7 @@ const NAV = [
   { to: "/quizzes", label: "Practice", icon: ListChecks },
   { to: "/study-plan", label: "Plan", icon: CalendarClock },
   { to: "/recommendations", label: "Next up", icon: Compass },
+  { to: "/history", label: "History", icon: History },
   { to: "/simulator", label: "Extension", icon: MonitorSmartphone },
   { to: "/profile", label: "Profile", icon: UserRound },
   { to: "/settings", label: "Settings", icon: Settings2 },

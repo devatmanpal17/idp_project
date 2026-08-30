@@ -15,7 +15,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { recommendationsQuery, topicsQuery, coursesQuery } from "@/lib/chaigaram";
-import { Panel, PanelHeader, MasteryPill } from "@/components/chaigaram/primitives";
+import { EmptyState, Panel, MasteryPill } from "@/components/chaigaram/primitives";
 import { QuizGenerator } from "@/components/chaigaram/QuizGenerator";
 
 export const Route = createFileRoute("/recommendations")({
@@ -32,7 +32,7 @@ export const Route = createFileRoute("/recommendations")({
 });
 
 function RecommendationsScreen() {
-  const { data: recommendations = [] } = useQuery(recommendationsQuery);
+  const { data: recommendations = [], isLoading, error } = useQuery(recommendationsQuery);
   const { data: topics = [] } = useQuery(topicsQuery);
   const { data: courses = [] } = useQuery(coursesQuery);
 
@@ -80,6 +80,21 @@ function RecommendationsScreen() {
 
       {/* Recommendations Cards Grid */}
       <div className="space-y-5">
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/8 p-4 text-xs text-destructive">
+            {error instanceof Error ? error.message : "Recommendations could not be loaded."}
+          </div>
+        )}
+        {isLoading && [0, 1, 2].map((item) => <div key={item} className="h-44 animate-pulse rounded-xl bg-surface" />)}
+        {!isLoading && !error && recommendations.length === 0 && (
+          <Panel>
+            <EmptyState
+              icon={<Compass className="h-5 w-5" />}
+              title="No learning sources to recommend yet"
+              hint="Capture a page or video with the extension. ChaiGaram will immediately suggest a baseline quiz, then adapt recommendations from your results."
+            />
+          </Panel>
+        )}
         {recommendations.map((rec, index) => {
           const topicObj = topics.find((t) => t.id === rec.topic_id);
           const courseObj = courses.find((c) => c.id === topicObj?.course_id);

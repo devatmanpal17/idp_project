@@ -48,7 +48,7 @@ export const Route = createFileRoute("/mastery")({
 
 function TopicMasteryScreen() {
   const { data: courses = [] } = useQuery(coursesQuery);
-  const { data: topics = [] } = useQuery(topicsQuery);
+  const { data: topics = [], isLoading, error } = useQuery(topicsQuery);
 
   const [selectedCourseId, setSelectedCourseId] = useState<string>("all");
   const [sortField, setSortField] = useState<keyof Topic>("mastery_score");
@@ -124,6 +124,12 @@ function TopicMasteryScreen() {
         </div>
       </div>
 
+      {error && (
+        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/8 p-4 text-xs text-destructive">
+          {error instanceof Error ? error.message : "Mastery data could not be loaded."}
+        </div>
+      )}
+
       {/* Main Grid: Radar Chart (Centerpiece) + Formula Breakdown */}
       <div className="grid grid-cols-1 gap-7 xl:grid-cols-3">
         {/* Radar Chart Centerpiece */}
@@ -133,7 +139,28 @@ function TopicMasteryScreen() {
             subtitle="Polar representation of verified comprehension scores across course domains"
           />
           <div className="p-4">
-            <div className="h-[320px] w-full">
+            {isLoading ? (
+              <div className="h-[320px] w-full animate-pulse rounded-lg bg-surface-2" />
+            ) : filteredTopics.length === 0 ? (
+              <div className="flex h-[320px] flex-col items-center justify-center text-center">
+                <RadarIcon className="h-7 w-7 text-muted-foreground" />
+                <p className="mt-3 text-sm font-semibold">No mastery signals yet</p>
+                <p className="mt-1 max-w-sm text-xs text-muted-foreground">Capture a learning page or video. Dwell time and revisits appear immediately; quiz accuracy is added after your first drill.</p>
+              </div>
+            ) : filteredTopics.length < 3 ? (
+              <div className="flex h-[320px] flex-col justify-center gap-6 px-4 sm:px-10">
+                {filteredTopics.map((topic) => (
+                  <div key={topic.id}>
+                    <div className="flex items-end justify-between gap-4">
+                      <div className="min-w-0"><p className="truncate text-sm font-semibold">{topic.title}</p><p className="mt-1 text-[10px] text-muted-foreground">Quiz {topic.quiz_perf_pct}% · Time {topic.time_on_section_pct}% · Revisit {topic.revisit_frequency_pct}%</p></div>
+                      <span className="text-xl font-semibold text-primary">{topic.mastery_score}%</span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, topic.mastery_score))}%` }} /></div>
+                  </div>
+                ))}
+                <p className="text-center text-[10px] text-muted-foreground">The radar view activates automatically after three topics are tracked.</p>
+              </div>
+            ) : <div className="h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
                   <PolarGrid stroke="var(--border)" opacity={0.6} />
@@ -181,7 +208,7 @@ function TopicMasteryScreen() {
                   />
                 </RadarChart>
               </ResponsiveContainer>
-            </div>
+            </div>}
           </div>
         </Panel>
 
@@ -339,6 +366,7 @@ function TopicMasteryScreen() {
               ))}
             </tbody>
           </table>
+          {!isLoading && filteredTopics.length === 0 && <div className="px-6 py-10 text-center text-xs text-muted-foreground">No topics match this course filter.</div>}
         </div>
       </Panel>
 

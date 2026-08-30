@@ -241,6 +241,21 @@ class RAGEngine:
             )
         ]
 
+    def delete_documents(self, document_ids: List[str]) -> int:
+        """Remove complete source documents so they cannot be used by retrieval again."""
+        unique_ids = sorted({str(value).strip() for value in document_ids if str(value).strip()})
+        if not unique_ids:
+            return 0
+        with self._lock:
+            result = self.collection.get(
+                where={"document_id": {"$in": unique_ids}},
+                include=[],
+            )
+            chunk_ids = list(result.get("ids") or [])
+            if chunk_ids:
+                self.collection.delete(ids=chunk_ids)
+        return len(chunk_ids)
+
     def retrieve(
         self, query: str, topic: Optional[str] = None, top_k: int = 6,
         document_id: Optional[str] = None, require_topic: bool = False,

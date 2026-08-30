@@ -127,7 +127,10 @@ $$P(\theta) = \frac{1}{1 + e^{-1.7 \cdot a \cdot (\theta - b)}}$$
   * Returns active service status, total indexed vector chunks, and configured AI engine keys.
 
 * **`GET /api/learning/data`**
-  * Derives courses, completion, topics, mastery, quiz history, recommendations, and activity from ChromaDB metadata and SQLite attempts. Empty storage returns empty arrays, never demo values.
+  * Derives courses, direct source URLs, completion, three-signal mastery, quiz history, scheduled reviews, recommendations, activity, and visit history from ChromaDB metadata and SQLite attempts. Empty storage returns empty arrays, never demo values.
+
+* **`DELETE /api/learning/history/{history_id}`**
+  * Removes every indexed passage belonging to a visited source so it cannot be retrieved for future quizzes. Assessment history is also removed when the deleted source was the topic's final remaining source.
 
 * **`GET /api/learning/topic-state?topic=...`**
   * Returns the extension's current persisted mastery and capture telemetry for one topic.
@@ -173,11 +176,12 @@ $$P(\theta) = \frac{1}{1 + e^{-1.7 \cdot a \cdot (\theta - b)}}$$
 ## 🖥️ Frontend Screens & Features
 
 1. **Overview Dashboard**: High-level mastery index, Ebbinghaus decay alerts, quick-launch practice drill modal.
-2. **Courses Directory**: Track enrollments across Udemy, Coursera, and edX.
+2. **Courses Directory**: Review captured courses and reopen the original page or video directly.
 3. **Course Deep Dive**: Section-by-section breakdown with one-click adaptive quiz generation.
 4. **Mastery Analytics**: Interactive signal weight sliders (Quiz %, Time %, Revisit %) with real-time recalculated mastery graphs.
 5. **Quizzes & Diagnostics**: Live quiz interface featuring execution telemetry, pedagogical rationale citations, and IRT curves.
-6. **Adaptive Study Plan**: Spaced repetition review calendar and retention half-life decay curves.
+6. **Adaptive Study Plan**: Generated spaced-repetition events, launchable review drills, calendar export, and retention half-life decay curves.
+7. **Visit History**: Search captured websites and topics, revisit their original URLs, or delete their indexed passages from quiz retrieval.
 7. **Smart Recommendations**: Impact-ranked corrective study blocks.
 8. **Browser Extension**: Installable Chrome/Edge companion that captures course captions, answers grounded questions, runs secure adaptive quizzes, and drives the live dashboard.
 9. **Settings**: Local Ollama model selection and live Chroma/Ollama readiness.

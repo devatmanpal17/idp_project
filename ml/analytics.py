@@ -147,5 +147,27 @@ class QuizAnalyticsStore:
             """), {"limit": limit}).mappings().all()
         return [{**dict(row), "details": json.loads(row["details_json"])} for row in rows]
 
+    def delete_topics(self, topics: List[str]) -> Dict[str, int]:
+        """Delete assessment state for topics whose indexed source was removed."""
+        cleaned = sorted({str(topic).strip() for topic in topics if str(topic).strip()})
+        deleted_attempts = 0
+        deleted_quizzes = 0
+        with self._lock, self.engine.begin() as connection:
+            for topic in cleaned:
+                attempts_result = connection.execute(
+                    text("DELETE FROM quiz_attempts WHERE topic = :topic"),
+                    {"topic": topic},
+                )
+                quizzes_result = connection.execute(
+                    text("DELETE FROM generated_quizzes WHERE topic = :topic"),
+                    {"topic": topic},
+                )
+                deleted_attempts += max(0, int(attempts_result.rowcount or 0))
+                deleted_quizzes += max(0, int(quizzes_result.rowcount or 0))
+        return {
+            "quiz_attempts": deleted_attempts,
+            "generated_quizzes": deleted_quizzes,
+        }
+
 
 quiz_analytics = QuizAnalyticsStore()

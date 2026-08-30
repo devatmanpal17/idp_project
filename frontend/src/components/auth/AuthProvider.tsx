@@ -64,6 +64,14 @@ const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
 
 function errorMessage(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "auth/unauthorized-domain"
+  ) {
+    return "This address is not authorized by Firebase. Open the dashboard at http://localhost:8080 and try again.";
+  }
   if (error instanceof Error)
     return error.message.replace(/^Firebase:\s*/i, "");
   return "Something went wrong. Please try again.";
@@ -167,6 +175,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setError(null);
     try {
+      if (window.location.hostname === "127.0.0.1") {
+        const authorizedUrl = new URL(window.location.href);
+        authorizedUrl.hostname = "localhost";
+        window.location.assign(authorizedUrl);
+        return;
+      }
+
       await setPersistence(services.auth, browserLocalPersistence);
       const useRedirect = window.matchMedia("(max-width: 767px)").matches;
       if (useRedirect) await signInWithRedirect(services.auth, googleProvider);

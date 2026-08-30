@@ -7,6 +7,9 @@ export type Course = {
   title: string;
   platform: string;
   thumbnail_url: string | null;
+  source_url: string;
+  last_visited_at: string;
+  visit_count: number;
   completion_pct: number;
   overall_mastery: number;
   created_at: string;
@@ -17,6 +20,7 @@ export type Topic = {
   course_id: string;
   title: string;
   mastery_score: number;
+  assessment_mastery?: number;
   quiz_perf_pct: number;
   time_on_section_pct: number;
   revisit_frequency_pct: number;
@@ -71,4 +75,20 @@ export type ActivityEntry = {
   event_type: string;
   metadata: Record<string, unknown>;
   created_at: string;
+};
+
+export type HistoryEntry = {
+  id: string;
+  title: string;
+  topics: string[];
+  page_url: string;
+  domain: string;
+  platform: string;
+  source_type: "document" | "video";
+  first_visited_at: string;
+  last_visited_at: string;
+  visit_count: number;
+  indexed_chunks: number;
+  word_count: number;
+  progress_pct: number;
 };

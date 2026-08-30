@@ -1,8 +1,7 @@
 /** HTTP client for the FastAPI ChromaDB + Ollama pipeline. */
 
 import type { QuizEvaluationResult, RAGChunk, RAGQuizResponse } from "./types";
-
-const BASE_URL = "/api";
+import { apiJSON } from "../api";
 
 export interface AIHealth {
   status?: string;
@@ -19,18 +18,7 @@ export interface AIHealth {
 }
 
 async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${BASE_URL}${path}`, init);
-  } catch {
-    throw new Error("The AI backend is offline. Start the FastAPI server on port 8000.");
-  }
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detail = typeof body.detail === "string" ? body.detail : `Request failed (${response.status})`;
-    throw new Error(detail);
-  }
-  return body as T;
+  return apiJSON<T>(path, init);
 }
 
 export function checkAIHealth() {
@@ -73,7 +61,11 @@ export function ingestRAGDocument(params: {
   });
 }
 
-export async function retrieveRAGChunks(topic: string, query = "", topK = 6): Promise<RAGChunk[]> {
+export async function retrieveRAGChunks(
+  topic: string,
+  query = "",
+  topK = 6,
+): Promise<RAGChunk[]> {
   const result = await requestJSON<{ chunks: RAGChunk[] }>("/rag/retrieve", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -139,11 +131,17 @@ export function streamSimulatorTranscript(params: {
 }
 
 export async function fetchSmartRecommendations() {
-  const result = await requestJSON<{ recommendations: unknown[] }>("/recommendations/smart");
+  const result = await requestJSON<{ recommendations: unknown[] }>(
+    "/recommendations/smart",
+  );
   return result.recommendations;
 }
 
-export function updateAIConfig(params: { provider: string; api_key?: string; model?: string }) {
+export function updateAIConfig(params: {
+  provider: string;
+  api_key?: string;
+  model?: string;
+}) {
   return requestJSON<Record<string, unknown>>("/settings/ai-config", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
