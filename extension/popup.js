@@ -1,4 +1,5 @@
 const statusNode = document.getElementById("status");
+const statusText = document.getElementById("statusText");
 
 function askBackground(type, payload) {
   return chrome.runtime.sendMessage({ type, payload });
@@ -15,24 +16,42 @@ async function sendToPage(type) {
   try {
     return await chrome.tabs.sendMessage(tab.id, { type });
   } catch (error) {
-    if (!/Receiving end does not exist|Could not establish connection/i.test(error?.message || "")) throw error;
+    if (!/Receiving end does not exist|Could not establish connection/i.test(error?.message || "")) {
+      throw error;
+    }
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
     return chrome.tabs.sendMessage(tab.id, { type });
   }
 }
 
-askBackground("HEALTH").then((response) => {
-  if (!response?.ok) throw new Error(response?.error || "Offline");
-  statusNode.className = "status online";
-  statusNode.textContent = `${response.data.active_ai_provider} · ${response.data.indexed_chunks} notes indexed`;
-}).catch(() => {
-  statusNode.className = "status offline";
-  statusNode.textContent = "Backend offline · start ChaiGaram on port 8000";
+function showStatus(message, state) {
+  statusNode.className = `status ${state}`;
+  statusText.textContent = message;
+}
+
+askBackground("HEALTH")
+  .then((response) => {
+    if (!response?.ok) throw new Error(response?.error || "Offline");
+    showStatus(
+      `${response.data.active_ai_provider} · ${response.data.indexed_chunks} notes indexed`,
+      "online",
+    );
+  })
+  .catch(() => showStatus("Engine offline · start ChaiGaram on port 8000", "offline"));
+
+document.getElementById("back").addEventListener("click", async () => {
+  const tab = await activeTab();
+  if (tab?.id) await chrome.tabs.goBack(tab.id).catch(() => undefined);
+  window.close();
 });
 
 document.getElementById("open").addEventListener("click", async () => {
-  try { await sendToPage("CHAIGARAM_TOGGLE"); window.close(); }
-  catch (_) { statusNode.textContent = "This browser page cannot run extensions. Try a normal website."; }
+  try {
+    await sendToPage("CHAIGARAM_TOGGLE");
+    window.close();
+  } catch (_) {
+    showStatus("This page cannot run extensions. Try a normal website.", "offline");
+  }
 });
 
 document.getElementById("dashboard").addEventListener("click", async () => {
@@ -42,13 +61,23 @@ document.getElementById("dashboard").addEventListener("click", async () => {
 });
 
 document.getElementById("capturePage").addEventListener("click", async () => {
-  try { await sendToPage("CHAIGARAM_CAPTURE_PAGE"); window.close(); }
-  catch (_) { statusNode.textContent = "Open a normal article, lesson, documentation, or video page first."; }
+  try {
+    await sendToPage("CHAIGARAM_CAPTURE_PAGE");
+    window.close();
+  } catch (_) {
+    showStatus("Open an article, lesson, documentation page, or video first.", "offline");
+  }
 });
 
 document.getElementById("capture").addEventListener("click", async () => {
-  try { await sendToPage("CHAIGARAM_CAPTURE_SELECTION"); window.close(); }
-  catch (_) { statusNode.textContent = "Select some learning text on the page first."; }
+  try {
+    await sendToPage("CHAIGARAM_CAPTURE_SELECTION");
+    window.close();
+  } catch (_) {
+    showStatus("Select some learning text on the page first.", "offline");
+  }
 });
 
-document.getElementById("options").addEventListener("click", () => chrome.runtime.openOptionsPage());
+document.getElementById("options").addEventListener("click", () =>
+  chrome.runtime.openOptionsPage(),
+);

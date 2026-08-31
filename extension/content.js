@@ -457,30 +457,46 @@
   const styles = `
     :host { all: initial; }
     * { box-sizing: border-box; }
-    .panel { position:fixed; z-index:2147483647; top:68px; right:20px; width:390px; max-height:calc(100vh - 90px); overflow:hidden; color:#f5f0e5; background:#191918; border:2px solid #f5f0e5; box-shadow:8px 9px 0 #090909; font:13px/1.45 "Arial Narrow", "Segoe UI", sans-serif; }
-    .panel::after { content:""; position:absolute; inset:0; z-index:-1; opacity:.16; pointer-events:none; background-image:radial-gradient(#f5f0e5 1px,transparent 1px); background-size:15px 15px; }
+    button, textarea { font:inherit; }
+    button { -webkit-tap-highlight-color:transparent; }
+    svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+    .panel { position:fixed; z-index:2147483647; top:18px; right:18px; width:420px; max-height:calc(100vh - 36px); overflow:hidden; color:#f5f5f7; background:radial-gradient(circle at 80% -10%,rgb(41 151 255 / 12%),transparent 35%),#000; border:1px solid #2d2d2f; border-radius:22px; box-shadow:0 28px 90px -28px rgb(0 0 0 / 95%),0 0 0 1px rgb(255 255 255 / 2%); font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; -webkit-font-smoothing:antialiased; }
     .panel.hidden { display:none; } .panel.min .body { display:none; }
-    header { display:flex; align-items:center; justify-content:space-between; padding:11px 12px; border-bottom:2px solid #f5f0e5; background:#22211f; }
-    .brand { display:flex; align-items:center; gap:9px; font-size:14px; font-weight:950; letter-spacing:-.03em; text-transform:uppercase; }
-    .mark { display:grid; place-items:center; width:31px; height:31px; color:#171716; background:#ff5a36; border:2px solid #f5f0e5; box-shadow:2px 2px 0 #f5f0e5; font-size:13px; transform:rotate(-4deg); }
-    .live { padding:3px 5px; color:#171716; background:#e8f24e; font:800 8px ui-monospace,monospace; letter-spacing:.08em; }
-    .header-actions { display:flex; align-items:center; gap:7px; }
-    .icon { width:25px; height:25px; padding:0; border:1px solid #625e57; color:#f5f0e5; background:#191918; font-size:16px; cursor:pointer; }
-    .body { max-height:calc(100vh - 145px); overflow:auto; padding:14px; scrollbar-color:#ff5a36 #252421; }
-    .lesson { margin-bottom:13px; padding-bottom:9px; border-bottom:1px dashed #625e57; color:#aaa398; font:10px ui-monospace,monospace; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .meterline { display:flex; justify-content:space-between; margin-bottom:6px; font-size:11px; font-weight:750; }
-    .meter { height:8px; margin-bottom:14px; overflow:hidden; border:1px solid #f5f0e5; background:#2e2c29; } .meter span { display:block; height:100%; background:#5577ff; }
-    .tabs { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:13px; }
-    .tab { padding:8px; border:1px solid #625e57; color:#aaa398; background:#252421; font-weight:850; cursor:pointer; } .tab.active { color:#171716; border-color:#f5f0e5; background:#e8f24e; box-shadow:2px 2px 0 #f5f0e5; }
-    textarea { width:100%; min-height:82px; resize:vertical; padding:11px; border:2px solid #625e57; outline:none; color:#f5f0e5; background:#111; font:inherit; } textarea:focus { border-color:#5577ff; }
-    .primary { width:100%; margin-top:8px; padding:11px; border:2px solid #f5f0e5; color:#171716; background:#ff5a36; box-shadow:3px 3px 0 #f5f0e5; font-weight:900; cursor:pointer; } .primary:hover { transform:translate(1px,1px); box-shadow:2px 2px 0 #f5f0e5; } .primary:disabled { opacity:.55; cursor:wait; }
-    .answer { margin-top:13px; padding:12px; border:2px solid #f5f0e5; color:#e9e3d8; background:#252421; white-space:pre-wrap; }
-    .sources { margin-top:10px; color:#aaa398; font:10px ui-monospace,monospace; } .source { margin-top:6px; padding-left:8px; border-left:3px solid #5577ff; }
-    .status { margin:12px 0 0; padding-top:9px; border-top:1px dashed #625e57; color:#aaa398; font:10px ui-monospace,monospace; } .status.ok { color:#49d78d; } .status.error { color:#ff8292; }
-    .quiz-item { margin:12px 0; padding:12px; border:2px solid #625e57; background:#252421; } .question { margin:0 0 10px; font-weight:850; }
-    .choice { display:flex; gap:8px; margin-top:7px; padding:9px; border:1px solid #4d4943; color:#ded8cd; background:#111; cursor:pointer; } .choice:hover { border-color:#e8f24e; } .choice input { accent-color:#ff5a36; }
-    .result { margin-top:10px; padding:10px; border-left:4px solid currentColor; background:#111; } .correct { color:#49d78d; } .wrong { color:#ff8292; }
-    @media (max-width:520px) { .panel { top:8px; right:8px; left:8px; width:auto; max-height:calc(100vh - 16px); } }
+    header { display:grid; grid-template-columns:34px 1fr auto; align-items:center; gap:10px; min-height:62px; padding:10px 12px; border-bottom:1px solid #2d2d2f; background:rgb(11 11 12 / 88%); backdrop-filter:blur(18px); }
+    .brand { display:flex; align-items:center; gap:9px; min-width:0; }
+    .mark { display:grid; place-items:center; width:32px; height:32px; flex:none; border-radius:10px; color:#000; background:#f5f5f7; font-size:9px; font-weight:800; }
+    .brand-copy { display:grid; min-width:0; }
+    .brand-name { font-size:13px; font-weight:750; letter-spacing:-.035em; }
+    .live { display:flex; align-items:center; gap:5px; color:#86868b; font:700 8px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.09em; text-transform:uppercase; }
+    .live::before { content:""; width:6px; height:6px; border-radius:50%; background:#30d158; box-shadow:0 0 0 3px rgb(48 209 88 / 10%); }
+    .header-actions { display:flex; align-items:center; gap:6px; }
+    .icon { display:grid; width:32px; height:32px; place-items:center; padding:0; border:1px solid #2d2d2f; border-radius:50%; color:#86868b; background:#161617; cursor:pointer; transition:160ms ease; }
+    .icon:hover { border-color:#424245; color:#f5f5f7; background:#222224; }
+    .body { display:grid; gap:12px; max-height:calc(100vh - 99px); overflow:auto; padding:14px; scrollbar-width:thin; scrollbar-color:#424245 transparent; }
+    .source-card { padding:14px; border:1px solid #2d2d2f; border-radius:15px; background:linear-gradient(145deg,#1c1c1e,#161617); }
+    .source-label { color:#2997ff; font:700 8px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.13em; text-transform:uppercase; }
+    .lesson { margin-top:6px; overflow:hidden; color:#f5f5f7; font-size:13px; font-weight:700; letter-spacing:-.025em; text-overflow:ellipsis; white-space:nowrap; }
+    .meterline { display:flex; align-items:center; justify-content:space-between; margin-top:13px; padding-top:12px; border-top:1px solid #2d2d2f; color:#86868b; font-size:10px; }
+    .meterline strong { color:#f5f5f7; font:700 10px ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .meter { height:5px; margin-top:8px; overflow:hidden; border-radius:999px; background:#2d2d2f; } .meter span { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,#0071e3,#2997ff); transition:width 300ms ease; }
+    .tabs { display:grid; grid-template-columns:1fr 1fr; gap:3px; padding:3px; border:1px solid #2d2d2f; border-radius:12px; background:#161617; }
+    .tab { min-height:35px; padding:7px; border:0; border-radius:9px; color:#86868b; background:transparent; font-size:10px; font-weight:700; cursor:pointer; transition:160ms ease; } .tab:hover { color:#f5f5f7; } .tab.active { color:#f5f5f7; background:#2a2a2c; box-shadow:inset 0 0 0 1px rgb(255 255 255 / 4%); }
+    .workspace { padding:14px; border:1px solid #2d2d2f; border-radius:15px; background:#161617; }
+    .feature { display:flex; width:100%; align-items:center; justify-content:space-between; gap:10px; padding:12px 13px; border:1px solid rgb(41 151 255 / 30%); border-radius:11px; color:#d8ecff; background:rgb(41 151 255 / 8%); font-size:10px; font-weight:700; text-align:left; cursor:pointer; transition:160ms ease; }
+    .feature:hover { border-color:rgb(41 151 255 / 55%); background:rgb(41 151 255 / 13%); }
+    .feature small { display:block; margin-top:2px; color:#86868b; font-size:8px; font-weight:500; }
+    .input-label { display:block; margin:14px 0 6px; color:#86868b; font:700 8px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.1em; text-transform:uppercase; }
+    textarea { width:100%; min-height:92px; resize:vertical; padding:11px 12px; border:1px solid #424245; border-radius:10px; outline:none; color:#f5f5f7; background:#0b0b0c; font-size:11px; line-height:1.55; transition:160ms ease; } textarea::placeholder { color:#636366; } textarea:focus { border-color:#2997ff; box-shadow:0 0 0 3px rgb(41 151 255 / 10%); }
+    .primary { display:flex; width:100%; min-height:40px; align-items:center; justify-content:center; gap:7px; margin-top:9px; padding:9px 12px; border:0; border-radius:10px; color:#fff; background:#2997ff; font-size:10px; font-weight:750; cursor:pointer; transition:160ms ease; } .primary:hover { filter:brightness(1.08); transform:translateY(-1px); } .primary:disabled,.feature:disabled { opacity:.5; cursor:wait; transform:none; }
+    .answer { margin-top:12px; padding:13px; border:1px solid #2d2d2f; border-radius:11px; color:#d1d1d6; background:#0b0b0c; font-size:11px; line-height:1.65; white-space:pre-wrap; }
+    .sources { margin-top:9px; color:#86868b; font:9px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; } .source { margin-top:6px; padding:7px 9px; border-left:2px solid #2997ff; border-radius:0 6px 6px 0; background:rgb(41 151 255 / 5%); }
+    .status { padding:10px 11px; border:1px solid #2d2d2f; border-radius:10px; color:#86868b; background:#0b0b0c; font:9px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; } .status::before { content:""; display:inline-block; width:6px; height:6px; margin-right:7px; border-radius:50%; background:#8e8e93; } .status.ok { color:#72dd8a; border-color:rgb(48 209 88 / 22%); } .status.ok::before { background:#30d158; } .status.error { color:#ff8a83; border-color:rgb(255 69 58 / 25%); } .status.error::before { background:#ff453a; }
+    .quiz-item { margin-top:11px; padding:13px; border:1px solid #2d2d2f; border-radius:12px; background:#0b0b0c; } .question { margin:0 0 10px; color:#f5f5f7; font-size:11px; font-weight:700; line-height:1.5; }
+    .choice { display:flex; align-items:flex-start; gap:8px; margin-top:7px; padding:9px 10px; border:1px solid #2d2d2f; border-radius:9px; color:#c7c7cc; background:#161617; font-size:10px; cursor:pointer; transition:140ms ease; } .choice:hover { border-color:#424245; color:#f5f5f7; background:#222224; } .choice input { margin-top:2px; accent-color:#2997ff; }
+    .result { margin-top:9px; padding:9px 10px; border-radius:8px; background:#161617; font-size:10px; } .correct { color:#72dd8a; border:1px solid rgb(48 209 88 / 25%); } .wrong { color:#ff8a83; border:1px solid rgb(255 69 58 / 25%); }
+    [hidden] { display:none !important; }
+    :focus-visible { outline:2px solid #2997ff; outline-offset:2px; }
+    @media (max-width:520px) { .panel { top:8px; right:8px; left:8px; width:auto; max-height:calc(100vh - 16px); border-radius:18px; } .body { max-height:calc(100vh - 79px); } }
   `;
 
   function buildOverlay() {
@@ -491,33 +507,27 @@
     shadow.innerHTML = `
       <style>${styles}</style>
       <aside class="panel hidden" aria-label="ChaiGaram learning assistant">
-        <header><div class="brand"><span class="mark">CG</span><span>ChaiGaram Companion</span></div><div class="header-actions"><span class="live">● LIVE RAG</span><button class="icon" id="min" title="Minimize">−</button><button class="icon" id="close" title="Close">×</button></div></header>
+        <header>
+          <button class="icon" id="back" title="Go back to the previous webpage" aria-label="Go back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg></button>
+          <div class="brand"><span class="mark">CG</span><span class="brand-copy"><span class="brand-name">ChaiGaram</span><span class="live">On this page</span></span></div>
+          <div class="header-actions"><button class="icon" id="min" title="Minimize" aria-label="Minimize">&minus;</button><button class="icon" id="close" title="Close" aria-label="Close">&times;</button></div>
+        </header>
         <div class="body">
-          <div class="lesson" id="lesson"></div>
-          <div class="meterline"><span>Verified lesson mastery</span><strong id="mastery">Not assessed</strong></div><div class="meter"><span id="meter" style="width:0%"></span></div>
+          <section class="source-card"><div class="source-label">Current learning source</div><div class="lesson" id="lesson"></div><div class="meterline"><span>What has actually stuck</span><strong id="mastery">Not tested yet</strong></div><div class="meter"><span id="meter" style="width:0%"></span></div></section>
           <div class="tabs"><button class="tab active" data-tab="ask">Ask tutor</button><button class="tab" data-tab="quiz">Adaptive quiz</button></div>
-          <div id="askPane"><button class="primary" id="summarize">Teach me this page</button><textarea id="question" placeholder="Ask anything about this page or video..."></textarea><button class="primary" id="ask">Ask about this page</button><div id="answer"></div></div>
-          <div id="quizPane" hidden><button class="primary" id="generate">Generate quiz from this lesson</button><div id="quiz"></div></div>
-          <div class="status" id="status">Waiting for visible captions · <span id="count">0</span> captured</div>
+          <section class="workspace">
+            <div id="askPane"><button class="feature" id="summarize"><span>Teach me this page<small>Get a structured lesson and concise summary</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button><label class="input-label" for="question">Ask a follow-up</label><textarea id="question" placeholder="Ask anything about this page, video, article, or saved selection..."></textarea><button class="primary" id="ask">Ask about this page</button><div id="answer"></div></div>
+            <div id="quizPane" hidden><button class="primary" id="generate">Make an English quiz from this page</button><div id="quiz"></div></div>
+          </section>
+          <div class="status" id="status">Ready for captions, page text, or a selection · <span id="count">0</span> saved</div>
         </div>
       </aside>`;
-    const brandParts = shadow.querySelectorAll(".brand span");
-    brandParts[0].textContent = "CG";
-    brandParts[1].textContent = "ChaiGaram Sidekick";
-    shadow.querySelector(".live").textContent = "ON THIS PAGE";
-    shadow.getElementById("min").textContent = "−";
-    shadow.getElementById("close").textContent = "×";
-    shadow.querySelector(".meterline span").textContent = "What has actually stuck";
-    shadow.getElementById("mastery").textContent = "Not tested yet";
     const tabs = shadow.querySelectorAll(".tab");
     tabs[0].textContent = "Ask the page";
     tabs[1].textContent = "Test me";
-    shadow.getElementById("question").placeholder = "Ask about this page, video, article, or saved selection…";
-    shadow.getElementById("ask").textContent = "Ask about this page";
-    shadow.getElementById("generate").textContent = "Make a quiz from this page";
-    shadow.getElementById("status").innerHTML = 'Ready for captions, page text, or a selection · <span id="count">0</span> saved';
     document.documentElement.appendChild(host);
 
+    shadow.getElementById("back").addEventListener("click", () => window.history.back());
     shadow.getElementById("close").addEventListener("click", () => setOpen(false));
     shadow.getElementById("min").addEventListener("click", () => {
       state.minimized = !state.minimized;
@@ -620,10 +630,17 @@
     }
   }
 
+  function setSummarizeButton(title, subtitle) {
+    const label = shadow.getElementById("summarize").querySelector(":scope > span");
+    if (!label) return;
+    label.firstChild.nodeValue = title;
+    label.querySelector("small").textContent = subtitle;
+  }
+
   async function summarizePage() {
     const button = shadow.getElementById("summarize");
     button.disabled = true;
-    button.textContent = "Building your lesson...";
+    setSummarizeButton("Building your lesson...", "Reading only the current page or watched video");
     shadow.getElementById("answer").replaceChildren();
     try {
       const context = await sourceContext("building a lesson", 20);
@@ -652,7 +669,7 @@
       setStatus(error.message, "error");
     } finally {
       button.disabled = false;
-      button.textContent = "Teach me this page again";
+      setSummarizeButton("Teach me this page again", "Refresh the lesson from the latest page context");
     }
   }
 

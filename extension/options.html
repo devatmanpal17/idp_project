@@ -1,15 +1,73 @@
 <!doctype html>
 <html lang="en">
-  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>ChaiGaram Settings</title><link rel="stylesheet" href="options.css" /></head>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ChaiGaram Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
   <body>
-    <main>
-      <h1>ChaiGaram connection</h1>
-      <p>Connect any learning webpage to your private, locally running study engine.</p>
-      <label>Backend URL<input id="apiBaseUrl" type="url" placeholder="http://localhost:8000" /></label>
-      <label>Dashboard URL<input id="dashboardUrl" type="url" placeholder="http://localhost:8080" /></label>
-      <label class="check"><input id="autoCapture" type="checkbox" /> Automatically capture visible captions when a page has learning media</label>
-      <button id="save">Save and test</button>
-      <div id="result" aria-live="polite"></div>
+    <main class="shell">
+      <header class="appbar">
+        <button id="back" class="icon-button" type="button" title="Go back" aria-label="Go back">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+        </button>
+        <div class="brand">
+          <span class="mark">CG</span>
+          <span><strong>ChaiGaram</strong><small>Extension settings</small></span>
+        </div>
+        <span class="secure"><span></span>Private engine</span>
+      </header>
+
+      <section class="hero">
+        <span class="eyebrow">Connection workspace</span>
+        <h1>Connect your learning companion.</h1>
+        <p>Choose where the extension reaches your private study engine and web dashboard.</p>
+      </section>
+
+      <section class="settings-card" aria-labelledby="connectionHeading">
+        <div class="section-heading">
+          <span class="section-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="6" rx="2" /><rect x="4" y="14" width="16" height="6" rx="2" /><path d="M8 7h.01M8 17h.01" /></svg>
+          </span>
+          <span><h2 id="connectionHeading">Engine destinations</h2><p>Local defaults work when all ChaiGaram servers are running on this computer.</p></span>
+        </div>
+
+        <div class="field-grid">
+          <label for="apiBaseUrl">
+            <span>Backend URL</span>
+            <small>FastAPI learning and AI engine</small>
+            <input id="apiBaseUrl" type="url" spellcheck="false" placeholder="http://localhost:8000" />
+          </label>
+          <label for="dashboardUrl">
+            <span>Dashboard URL</span>
+            <small>Your courses, history, mastery, and plan</small>
+            <input id="dashboardUrl" type="url" spellcheck="false" placeholder="http://localhost:8080" />
+          </label>
+        </div>
+      </section>
+
+      <section class="settings-card preference-card" aria-labelledby="captureHeading">
+        <div class="section-heading">
+          <span class="section-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5H5a2 2 0 0 0-2 2v3M16 5h3a2 2 0 0 1 2 2v3M8 19H5a2 2 0 0 1-2-2v-3M16 19h3a2 2 0 0 0 2-2v-3" /><path d="M8 12h8" /></svg>
+          </span>
+          <span><h2 id="captureHeading">Learning capture</h2><p>Use what is currently visible so lessons and quizzes stay relevant.</p></span>
+        </div>
+        <label class="switch-row" for="autoCapture">
+          <span><strong>Capture visible video captions</strong><small>Save only captions that have appeared up to the current playback position.</small></span>
+          <input id="autoCapture" type="checkbox" />
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+      </section>
+
+      <footer class="save-bar">
+        <div id="result" aria-live="polite">Settings are saved privately in this browser.</div>
+        <button id="save" type="button">
+          <span>Save and test connection</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+        </button>
+      </footer>
     </main>
     <script src="options.js"></script>
   </body>
