@@ -94,11 +94,19 @@ def ask_lesson(req: AskRequest) -> Dict[str, Any]:
             req.question, topic=req.topic, top_k=req.top_k,
             document_id=active_document_id,
         )
-        answer = llm_service.answer_with_rag(req.question, chunks, req.topic or "Current lesson")
+        answer = llm_service.answer_with_rag(
+            req.question,
+            chunks,
+            req.topic or "Current lesson",
+            history=[turn.model_dump() for turn in req.history],
+        )
+        cited_sources = [
+            chunk for chunk in chunks if f"[{chunk['chunk_id']}]" in answer
+        ]
         return {
             "answer": answer,
             "active_provider": llm_service._last_provider_used,
-            "sources": chunks,
+            "sources": cited_sources,
         }
     except Exception as exc:
         raise _service_error(exc) from exc

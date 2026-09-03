@@ -12,11 +12,17 @@ class RetrieveRequest(BaseModel):
     top_k: int = Field(default=6, ge=1, le=20, description="Number of context chunks to retrieve")
 
 
+class ChatTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=4000)
+
+
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=2, max_length=2000)
     topic: Optional[str] = Field(default=None, max_length=300)
     transcript_context: Optional[str] = Field(default=None, max_length=50000)
     top_k: int = Field(default=5, ge=1, le=10)
+    history: List[ChatTurn] = Field(default_factory=list, max_length=12)
     source_type: Literal["document", "video"] = "document"
     observed_until_seconds: float = Field(default=0, ge=0)
 

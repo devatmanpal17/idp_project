@@ -1,273 +1,361 @@
-# ☕ ChaiGaram — AI-Powered MOOC Mastery & Retention Platform
+# ChaiGaram
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
-[![React 19](https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript_5.8-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS_v4-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-[![Ollama](https://img.shields.io/badge/Local_LLM-Llama_3.2-orange?style=for-the-badge)](https://ollama.com/)
-[![ChromaDB](https://img.shields.io/badge/Vector_DB-ChromaDB-purple?style=for-the-badge)](https://www.trychroma.com/)
+ChaiGaram is a local AI-powered learning assistant. It captures educational webpages, course lessons, selected text, and watched video captions; indexes that material; answers questions from it; generates grounded quizzes; tracks performance; and builds a mastery dashboard and study plan.
 
-> A 3-tier, intelligent learning analytics and assessment engine. ChaiGaram tracks learner interactions across MOOC platforms (Coursera, Udemy, edX), quantifies multi-signal topic mastery, builds Ebbinghaus-based spaced repetition schedules, and generates adaptive RAG-grounded diagnostic assessments with live telemetry.
+## Technology stack
 
----
+- React 19, TanStack Start, TanStack Router, React Query, and Tailwind CSS
+- Chrome/Edge Manifest V3 browser extension
+- FastAPI and Pydantic
+- Ollama `embeddinggemma` for embeddings
+- Ollama `llama3.2:3b` for generation
+- ChromaDB for persistent semantic search
+- SQLite locally or PostgreSQL in production for quiz analytics
+- Optional Firebase Authentication and Firestore for user profiles
 
-## 📑 Table of Contents
-- [Architecture Overview](#-architecture-overview)
-- [Tech Stack](#-tech-stack)
-- [Directory Structure](#-directory-structure)
-- [Machine Learning & Algorithmic Core](#-machine-learning--algorithmic-core)
-- [REST API Reference](#-rest-api-reference)
-- [Frontend Screens & Features](#-frontend-screens--features)
-- [Getting Started](#-getting-started)
-  - [Prerequisites](#prerequisites)
-  - [1. Environment Setup](#1-environment-setup)
-  - [2. Start the Backend API](#2-start-the-backend-api)
-  - [3. Start the Frontend App](#3-start-the-frontend-app)
-- [Verification & Testing](#-verification--testing)
+> The current implementation uses Ollama and ChromaDB. Older references to Gemini, OpenAI, or TF-IDF do not describe the active pipeline.
 
----
+## Architecture
 
-## 🏛️ Architecture Overview
-
-ChaiGaram is structured as a decoupled 3-tier system:
-
-```mermaid
-graph TD
-    UI[Frontend: React 19 + TanStack Router + Tailwind CSS]
-    API[Backend: FastAPI REST API Server :8000]
-    ML[ML Core: ChromaDB RAG + IRT Calibration + Attempt Analytics]
-    EXT[Chrome/Edge Manifest V3 Learning Companion]
-
-    UI -->|Vite Proxy /api| API
-    EXT -->|Live Telemetry /api/rag/stream-transcript| API
-    API -->|Vector Retrieval & IRT Payload| ML
-    ML -->|Structured grounded prompts| LLM[Ollama / Llama 3.2]
+```text
+Educational webpage or video
+            |
+            v
+Chrome/Edge extension
+  - extracts useful page text
+  - captures captions already watched
+  - provides tutor and quiz UI
+            |
+            v
+FastAPI backend (:8000)
+  |         |                   |
+  |         |                   +--> SQLite/PostgreSQL
+  |         |                        quiz sessions and attempts
+  |         |
+  |         +--> Ollama llama3.2:3b
+  |              answers, summaries, and quizzes
+  |
+  +--> Ollama embeddinggemma --> ChromaDB
+       document/query vectors      indexed lesson chunks
+            |
+            v
+React dashboard (:8080)
+  - courses and topics
+  - mastery and quiz history
+  - study plan and recommendations
 ```
 
----
+The extension and React dashboard are separate clients of the same FastAPI backend.
 
-## 🛠️ Tech Stack
+## Repository structure
 
-| Domain | Technologies |
-| :--- | :--- |
-| **Frontend** | **React 19**, **TypeScript 5.8**, **TanStack Start**, **TanStack Router**, **TanStack React Query**, **Tailwind CSS v4**, **Radix UI**, **Recharts**, **Lucide Icons**, **Motion** |
-| **Backend** | **Python 3.10+**, **FastAPI**, **Uvicorn**, **Pydantic v2**, **CORS Middleware** |
-| **ML & AI** | **ChromaDB**, **Ollama Embeddings**, **Cosine Similarity Search**, **Item Response Theory (2PL IRT)**, **SQLite Attempt Analytics** |
-| **LLM Models** | **Llama 3.2** through local **Ollama**, with schema-validated structured output and grounded citations |
-| **Tooling** | **Vite 8**, **Nitro**, **ESLint**, **Prettier** |
-
----
-
-## 📂 Directory Structure
-
-```
+```text
 chaigaram/
-├── ml/                           # ML & AI Algorithmic Core
-│   ├── rag_engine.py             # Persistent ChromaDB index & cosine retriever
-│   ├── analytics.py              # SQLite quiz sessions and attempt history
-│   ├── calibration.py            # Difficulty calibration & Bayesian mastery update math
-│   ├── graph_generator.py        # Mathematical payload generator for Recharts
-│   └── llm_service.py            # Ollama Llama structured generation pipeline
-│
-├── backend/                      # FastAPI Backend Server
-│   ├── app.py                    # App factory, .env loader & CORS configuration
-│   ├── models.py                 # Pydantic schemas for requests and responses
-│   ├── run.py                    # Direct server entry script
-│   └── routes/                   # API route handlers
-│       ├── health.py             # GET /api/health
-│       ├── rag.py                # POST /api/rag/* (retrieve, generate-quiz, evaluate, stream)
-│       ├── recommendations.py    # GET /api/recommendations/smart
-│       └── settings.py           # POST /api/settings/ai-config
-│
-└── frontend/                     # React 19 Client
-    ├── src/
-    │   ├── routes/               # TanStack file-based routes
-    │   │   ├── index.tsx         # Overview Dashboard & Weak Spot Alerts
-    │   │   ├── courses.tsx       # Multi-platform Course Directory
-    │   │   ├── mastery.tsx       # Multi-signal weight slider analytics
-    │   │   ├── quizzes.tsx       # Interactive RAG quiz & diagnostic test runner
-    │   │   ├── study-plan.tsx    # Spaced repetition decay & calendar
-    │   │   ├── recommendations.tsx # Impact-ranked corrective study blocks
-    │   │   ├── simulator.tsx     # Browser extension installation and live status
-    │   │   └── settings.tsx      # Runtime AI Provider / Key configuration
-    │   ├── lib/
-    │   │   └── ai/client.ts      # Typed API client with transparent errors
-    │   └── components/           # UI design system components
-    ├── package.json
-    └── vite.config.ts            # Vite config with /api proxy to port 8000
+|-- backend/
+|   |-- app.py                 FastAPI application and route registration
+|   |-- models.py              Pydantic request validation models
+|   |-- run.py                 Backend runner
+|   `-- routes/
+|       |-- health.py          Service diagnostics
+|       |-- rag.py             Ingestion, retrieval, tutor, and quiz APIs
+|       |-- jobs.py            Pollable background AI jobs
+|       |-- learning_data.py   Dashboard data and history deletion
+|       |-- recommendations.py Assessment-based recommendations
+|       `-- settings.py        Runtime Ollama configuration
+|-- ml/
+|   |-- rag_engine.py          Chunking, embeddings, and ChromaDB
+|   |-- llm_service.py         Grounded generation and validation
+|   |-- analytics.py           SQLite/PostgreSQL quiz persistence
+|   |-- calibration.py         Difficulty and mastery formulas
+|   `-- graph_generator.py     Chart payload generation
+|-- frontend/
+|   |-- src/routes/            Dashboard screens
+|   |-- src/components/        Shared UI and quiz components
+|   `-- src/lib/               API clients, queries, types, and Firebase
+|-- extension/
+|   |-- manifest.json          Extension definition
+|   |-- background.js          Backend API bridge
+|   |-- content.js             Capture logic and page overlay
+|   |-- popup.*                Extension popup
+|   `-- options.*              Connection settings
+|-- tests/                     Backend and AI guardrail tests
+`-- start_all.bat              Windows setup and launcher
 ```
 
----
+## How it works
 
-## 🔬 Machine Learning & Algorithmic Core
+### 1. Capture content
 
-### 1. ChromaDB Semantic Vector Retrieval
-Lessons and transcripts are split into overlapping semantic chunks. `embeddinggemma` creates dense vectors, ChromaDB stores them persistently with source/topic metadata, and retrieval returns raw cosine similarity without score inflation:
-$$\text{Similarity}(Q, D) = \frac{Q \cdot D}{\|Q\|_2 \cdot \|D\|_2}$$
+The extension's `content.js` runs on normal HTTP and HTTPS pages.
 
-### 2. Item Response Theory (2PL IRT)
-Questions and difficulty curves are calibrated against learner ability:
-$$P(\theta) = \frac{1}{1 + e^{-1.7 \cdot a \cdot (\theta - b)}}$$
-* $\theta$: Learner ability mapped from current mastery ($-3.0$ to $+3.0$)
-* $b$: Item difficulty mapped from signals ($-2.0$ to $+2.0$)
-* $a$: Discrimination factor ($1.4$)
+For documents it locates the main article/content container and removes navigation, forms, sidebars, comments, recommendations, advertisements, scripts, and decorative content. It keeps useful headings, paragraphs, lists, code, quotations, and captions.
 
-### 3. Adaptive Difficulty & Bayesian Mastery Update
-* **Difficulty Formula**:
-  $$\text{difficulty} = \text{clamp}\left(\frac{\text{mastery}}{100} + 0.15 - \text{error\_penalty},\; 0.25,\; 0.85\right)$$
-* **Bayesian Mastery Update**:
-  $$\text{new\_mastery} = \text{current\_mastery} + \Big((\text{quiz\_score}\% - \text{current\_mastery}) \times 0.22\Big)$$
+For videos it collects captions from native text tracks, YouTube caption data, or visible caption elements. Only captions at or before the current playback position are used, so a quiz cannot use future video content.
 
----
+Captured context is limited to 48,000 characters. Video quizzes require at least 50 caption words.
 
-## 🔌 REST API Reference
+### 2. Index content
 
-### Health & Diagnostics
-* **`GET /api/health`**
-  * Returns active service status, total indexed vector chunks, and configured AI engine keys.
+`ml/rag_engine.py` splits text into approximately 220-word chunks with a 40-word overlap. It sends each chunk to Ollama's `/api/embed` endpoint using `embeddinggemma` and stores the vectors and metadata in ChromaDB.
 
-* **`GET /api/learning/data`**
-  * Derives courses, direct source URLs, completion, three-signal mastery, quiz history, scheduled reviews, recommendations, activity, and visit history from ChromaDB metadata and SQLite attempts. Empty storage returns empty arrays, never demo values.
+The default local vector database is:
 
-* **`DELETE /api/learning/history/{history_id}`**
-  * Removes every indexed passage belonging to a visited source so it cannot be retrieved for future quizzes. Assessment history is also removed when the deleted source was the topic's final remaining source.
+```text
+data/chroma
+```
 
-* **`GET /api/learning/topic-state?topic=...`**
-  * Returns the extension's current persisted mastery and capture telemetry for one topic.
+Stored metadata includes topic, course, source, URL, timestamp, video position, dwell time, and ingestion time.
 
-### RAG & Quiz Engine
-* **`POST /api/rag/retrieve`**
-  * **Payload**: `{"query": "string", "topic": "string", "top_k": 6}`
-  * **Response**: Top matching transcript chunks with similarity scores and timestamps.
+### 3. Retrieve evidence
 
-* **`POST /api/rag/generate-quiz`**
-  * **Payload**:
-    ```json
-    {
-      "topic": "Dynamic Programming",
-      "mastery_score": 45.0,
-      "quiz_perf_pct": 40.0,
-      "time_on_section_pct": 60.0,
-      "revisit_frequency_pct": 30.0,
-      "recent_errors": ["Overlapping subproblems"],
-      "question_count": 3
-    }
-    ```
-  * **Response**: Calibrated difficulty, execution telemetry pipeline, RAG-grounded questions with citations, IRT curves, Bloom's cognitive distribution, and concept knowledge graphs.
+When a learner asks a question or requests a quiz, the query is embedded with the same model. ChromaDB returns the closest chunks using cosine distance.
 
-* **`POST /api/rag/evaluate-quiz`**
-  * **Payload**: `{"topic": "string", "questions": [...], "given_answers": [...], "current_mastery": 45.0}`
-  * **Response**: Detailed question breakdown, score percentage, Bayesian mastery delta, and mastery shift comparison chart.
+When active page content is supplied, retrieval is restricted to that exact document. This prevents unrelated saved material from leaking into a page-specific answer or quiz.
 
-* **`POST /api/rag/stream-transcript`**
-  * **Payload**: `{"video_title": "string", "timestamp": "04:15", "transcript_segment": "...", "current_topic": "string", "dwell_seconds": 25}`
-  * **Response**: Real-time vector chunk indexing and live comprehension signal delta.
+### 4. Generate an answer, lesson, or quiz
 
-### Spaced Repetition & Settings
-* **`GET /api/recommendations/smart`**
-  * Returns prioritized study blocks ranked by impact score and retention decay gap.
+`ml/llm_service.py` sends the retrieved evidence to the configured Ollama model. The model must use only supplied evidence, cite chunk IDs, treat source content as untrusted data, report insufficient context, and produce English text.
 
-* **`POST /api/settings/ai-config`**
-  * **Payload**: `{"provider": "gemini" | "openai" | "local", "api_key": "string"}`
-  * Updates AI provider and credentials in memory at runtime without restarting.
+Quiz output must match a Pydantic JSON schema. The backend checks that:
 
----
+- every question has exactly four distinct choices
+- the answer exactly matches one choice
+- citations belong to retrieved chunks
+- the evidence quote appears verbatim in cited material
+- questions and answers overlap with their evidence
+- questions are not duplicates
+- output is in English using Latin script
 
-## 🖥️ Frontend Screens & Features
+Invalid output is retried up to three times and then rejected.
 
-1. **Overview Dashboard**: High-level mastery index, Ebbinghaus decay alerts, quick-launch practice drill modal.
-2. **Courses Directory**: Review captured courses and reopen the original page or video directly.
-3. **Course Deep Dive**: Section-by-section breakdown with one-click adaptive quiz generation.
-4. **Mastery Analytics**: Interactive signal weight sliders (Quiz %, Time %, Revisit %) with real-time recalculated mastery graphs.
-5. **Quizzes & Diagnostics**: Live quiz interface featuring execution telemetry, pedagogical rationale citations, and IRT curves.
-6. **Adaptive Study Plan**: Generated spaced-repetition events, launchable review drills, calendar export, and retention half-life decay curves.
-7. **Visit History**: Search captured websites and topics, revisit their original URLs, or delete their indexed passages from quiz retrieval.
-7. **Smart Recommendations**: Impact-ranked corrective study blocks.
-8. **Browser Extension**: Installable Chrome/Edge companion that captures course captions, answers grounded questions, runs secure adaptive quizzes, and drives the live dashboard.
-9. **Settings**: Local Ollama model selection and live Chroma/Ollama readiness.
+### 5. Evaluate and store quizzes
 
-Long-running tutor and quiz requests use a backend job API (`POST /api/jobs`, then `GET /api/jobs/{job_id}`), so Chrome Manifest V3 service-worker restarts cannot close an in-progress model response.
+Complete generated quizzes, including correct answers, are stored on the server. The browser receives public questions and a `quiz_id`, not the answers.
 
----
+On submission, the backend loads the stored quiz, evaluates answers, updates mastery, and saves the attempt. The default local database is:
 
-## 🚀 Getting Started
+```text
+data/analytics.sqlite3
+```
 
-### Prerequisites
-* **Python 3.10+**
-* **Node.js 18+** & **npm**
+### 6. Build the dashboard
 
-### 1. Environment Setup
-Install [Ollama](https://ollama.com/download) and pull the local models once:
-```bash
+`GET /api/learning/data` derives courses, topics, history, activity, recommendations, and study events from ChromaDB metadata and persisted quiz attempts. React Query refreshes this data every 15 seconds.
+
+## Adaptive scoring
+
+### Quiz difficulty
+
+```text
+difficulty = clamp(mastery / 100 + 0.15 - error_penalty, 0.25, 0.85)
+```
+
+Each recent error contributes a `0.03` penalty, up to `0.15`.
+
+- Below `0.50`: foundational recall
+- `0.50` to `0.69`: intermediate comprehension
+- `0.70` and above: advanced application and synthesis
+
+### Mastery update after a quiz
+
+```text
+mastery_delta = (quiz_score - current_mastery) * 0.22
+new_mastery = current_mastery + mastery_delta
+```
+
+### Dashboard mastery
+
+```text
+mastery = quiz performance * 0.40
+        + time on section * 0.35
+        + revisit frequency * 0.25
+```
+
+Time is capped at 100% after 15 tracked minutes. Revisit frequency is capped at 100% after five indexed documents for a topic.
+
+## API reference
+
+### Diagnostics and settings
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/health` | Ollama, model, ChromaDB, and analytics status |
+| `POST` | `/api/settings/ai-config` | Change the active Ollama chat model |
+
+### RAG and assessments
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/rag/topics` | List indexed topics |
+| `POST` | `/api/rag/ingest` | Index pasted lesson material |
+| `POST` | `/api/rag/retrieve` | Retrieve relevant chunks |
+| `POST` | `/api/rag/ask` | Answer from active-source evidence |
+| `POST` | `/api/rag/summarize` | Teach and summarize a source |
+| `POST` | `/api/rag/generate-quiz` | Generate and store a grounded quiz |
+| `POST` | `/api/rag/evaluate-quiz` | Score answers and persist mastery |
+| `POST` | `/api/rag/stream-transcript` | Index a caption or selected-text segment |
+
+### Dashboard and jobs
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/learning/data` | Return the complete dashboard dataset |
+| `GET` | `/api/learning/topic-state` | Return one topic's state |
+| `DELETE` | `/api/learning/history/{id}` | Delete a source and orphaned assessments |
+| `GET` | `/api/recommendations/smart` | Return assessment-based recommendations |
+| `POST` | `/api/jobs` | Start a slow AI operation |
+| `GET` | `/api/jobs/{job_id}` | Poll job status and result |
+
+Interactive API documentation is available at `http://127.0.0.1:8000/docs` while the backend is running.
+
+## Dashboard screens
+
+- **Overview**: courses, average mastery, quiz count, study events, recommendations, and activity
+- **Courses**: captured course/source catalogue and topic telemetry
+- **Mastery**: sortable topic scores, radar visualization, and signal breakdown
+- **Practice**: manual note ingestion, quiz generation, and assessment history
+- **Plan**: generated review events, retention chart, and `.ics` export
+- **Next up**: impact-ranked recommendations
+- **History**: captured pages/videos and deletion controls
+- **Extension**: installation instructions and service status
+- **Profile**: optional Google sign-in and Firestore profile editing
+- **Settings**: Ollama model selection and pipeline health
+
+## Prerequisites
+
+- Python 3.10 or newer
+- Node.js 18 or newer
+- npm
+- Ollama
+- Chrome or Microsoft Edge for the extension
+
+## Installation and startup
+
+### 1. Install Ollama models
+
+```powershell
 ollama pull embeddinggemma
 ollama pull llama3.2:3b
 ```
 
-Optional `.env` overrides in `chaigaram/`:
-```env
-OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_EMBED_MODEL=embeddinggemma
-OLLAMA_CHAT_MODEL=llama3.2:3b
-CHROMA_PERSIST_DIR=./data/chroma
-```
+Ensure Ollama is running at `http://127.0.0.1:11434`.
 
-For production, set `DATABASE_URL` to a managed PostgreSQL connection string (for example Supabase or Neon) to persist quiz sessions and mastery data online. Set `CHROMA_HOST`, `CHROMA_PORT`, and `CHROMA_SSL=true` to store captured page/video evidence in a hosted Chroma deployment. If these variables are omitted, ChaiGaram keeps using local SQLite and persistent Chroma for development.
+### 2. Install and start the backend
 
-There is no fabricated offline fallback. The API reports `setup_required` until Ollama and both models are ready.
-
-### 2. Start the Backend API
-```bash
-# Navigate to project directory
+```powershell
 cd chaigaram
-
-# Install Python requirements
 pip install -r backend/requirements.txt
-
-# Start the FastAPI server on port 8000
 python -m uvicorn backend.app:app --port 8000 --reload
-# Or run: python -m backend.run
 ```
 
-### 3. Start the Frontend App
-Open a new terminal:
-```bash
-# Navigate to the frontend directory
+### 3. Install and start the frontend
+
+In a second terminal:
+
+```powershell
 cd chaigaram/frontend
-
-# Install dependencies
 npm install
-
-# Start Vite dev server
 npm run dev
 ```
 
-Open **`http://localhost:8080`** in your browser.
+Open `http://localhost:8080`.
 
-### 4. Install the Browser Extension
+### Windows launcher
 
-1. Keep the backend running on `http://localhost:8000`.
-2. Open `chrome://extensions` or `edge://extensions` and enable **Developer mode**.
-3. Choose **Load unpacked** and select the `extension` directory.
-4. Open any article, documentation, lesson, or video webpage and open ChaiGaram from the toolbar. Save the page, a text selection, or visible captions.
+You can also run:
 
-The extension embeds captured captions into persistent ChromaDB storage. Quiz answers remain server-side until submission, and attempts are persisted for real mastery-history graphs.
-
----
-
-## 🧪 Verification & Testing
-
-```bash
-# Verify Python ML & Backend modules
-python -c "import ml, backend; print('ML and Backend modules verified!')"
-
-# Typecheck Frontend TypeScript
-cd frontend && npx tsc --noEmit
-
-# Build production bundle
-cd frontend && npm run build
+```powershell
+cd chaigaram
+.\start_all.bat
 ```
 
----
+The launcher installs dependencies, builds the frontend, and starts both servers. It does not install or start Ollama.
 
-## 📄 License
-MIT License © 2026 ChaiGaram Team
+## Browser-extension installation
+
+1. Keep FastAPI running on port 8000.
+2. Open `chrome://extensions` or `edge://extensions`.
+3. Enable **Developer mode**.
+4. Select **Load unpacked**.
+5. Choose the `chaigaram/extension` directory.
+6. Open an educational webpage or video with English captions.
+7. Use the popup to open the assistant, learn the page, or save a selection.
+
+The options page allows changing the backend and dashboard URLs.
+
+## Configuration
+
+Backend variables can be placed in `chaigaram/.env`:
+
+```dotenv
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_EMBED_MODEL=embeddinggemma
+OLLAMA_CHAT_MODEL=llama3.2:3b
+
+# Optional remote ChromaDB
+CHROMA_HOST=
+CHROMA_PORT=8000
+CHROMA_SSL=false
+CHROMA_COLLECTION=chaigaram_lessons
+
+# Optional PostgreSQL; SQLite is used when omitted
+DATABASE_URL=
+```
+
+The frontend API URL can be configured in `frontend/.env.local`:
+
+```dotenv
+VITE_API_BASE_URL=http://127.0.0.1:8000/api
+```
+
+## Optional Firebase login
+
+Firebase is used only for Google authentication and profile documents. Add these values to `frontend/.env.local`:
+
+```dotenv
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+VITE_FIREBASE_STORAGE_BUCKET=
+VITE_FIREBASE_MESSAGING_SENDER_ID=
+VITE_FIREBASE_APP_ID=
+```
+
+Enable Google authentication, create Firestore, and publish `frontend/firestore.rules`. See `frontend/FIREBASE_SETUP.md` for details.
+
+## Tests and verification
+
+Run backend tests:
+
+```powershell
+cd chaigaram
+python -m unittest discover -s tests -v
+```
+
+Type-check and build the frontend:
+
+```powershell
+cd chaigaram/frontend
+npx tsc --noEmit
+npm run build
+```
+
+Tests cover source isolation, minimum caption scope, grounded evidence quotations, English-only quiz output, history grouping and deletion, recommendations, and study-plan generation.
+
+## Current limitations
+
+- FastAPI endpoints do not currently require authentication.
+- Learning data is global to one backend instance and is not separated by Firebase user ID.
+- CORS allows all origins and should be restricted before deployment.
+- Background AI jobs are stored in memory and disappear after a restart.
+- Study events are generated dynamically rather than persisted as editable tasks.
+- The calibration module describes an MCQ/short-answer mix, but the active generator creates MCQs only.
+- Difficulty currently uses mastery and recent errors; other signals are displayed but do not directly change difficulty.
+- Firebase protects profile documents only, not ChromaDB or quiz analytics.
+- `start_all.bat` does not verify or start Ollama.
+
+## Privacy
+
+With the default configuration, lesson content, embeddings, and quiz analytics remain on the local machine. The extension sends only explicitly captured page text, selections, and visible or watched captions to the configured backend.
+
+If the backend, ChromaDB, PostgreSQL, or Ollama URL is changed to a remote service, captured content will be sent to that service and should be protected with authentication and transport security.

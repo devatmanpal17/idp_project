@@ -74,6 +74,30 @@ export async function retrieveRAGChunks(
   return result.chunks;
 }
 
+export function askRAGAssistant(params: {
+  question: string;
+  topic?: string;
+  topK?: number;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
+  signal?: AbortSignal;
+}) {
+  return requestJSON<{
+    answer: string;
+    active_provider?: string;
+    sources: RAGChunk[];
+  }>("/rag/ask", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question: params.question,
+      topic: params.topic || null,
+      top_k: params.topK ?? 5,
+      history: params.history ?? [],
+    }),
+    ...(params.signal ? { signal: params.signal } : {}),
+  });
+}
+
 export function generateRAGQuiz(params: {
   topic: string;
   mastery_score?: number;
