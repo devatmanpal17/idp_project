@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional, Literal
 
 
 class RetrieveRequest(BaseModel):
+    document_id: Optional[str] = Field(default=None, max_length=64)
     query: str = Field(default="", description="Search query or question")
     topic: Optional[str] = Field(default=None, description="Topic name")
     top_k: int = Field(default=6, ge=1, le=20, description="Number of context chunks to retrieve")
@@ -18,6 +19,7 @@ class ChatTurn(BaseModel):
 
 
 class AskRequest(BaseModel):
+    document_id: Optional[str] = Field(default=None, max_length=64)
     question: str = Field(..., min_length=2, max_length=2000)
     topic: Optional[str] = Field(default=None, max_length=300)
     transcript_context: Optional[str] = Field(default=None, max_length=50000)
@@ -28,14 +30,16 @@ class AskRequest(BaseModel):
 
 
 class SummarizeRequest(BaseModel):
+    document_id: Optional[str] = Field(default=None, max_length=64)
     topic: str = Field(..., min_length=2, max_length=300)
-    page_content: str = Field(..., min_length=20, max_length=50000)
+    page_content: str = Field(default="", max_length=50000)
     page_url: Optional[str] = Field(default="", max_length=4000)
     source_type: Literal["document", "video"] = "document"
     observed_until_seconds: float = Field(default=0, ge=0)
 
 
 class GenerateQuizRequest(BaseModel):
+    document_id: Optional[str] = Field(default=None, max_length=64)
     topic: str = Field(..., description="Target topic name")
     mastery_score: float = Field(default=0.0, description="Persisted current mastery score (0-100)")
     quiz_perf_pct: Optional[float] = Field(default=0.0)

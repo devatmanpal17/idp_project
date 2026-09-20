@@ -32,6 +32,7 @@ from .routes.recommendations import router as recommendations_router
 from .routes.settings import router as settings_router
 from .routes.learning_data import router as learning_data_router
 from .routes.jobs import router as jobs_router
+from .routes.vectors import router as vectors_router
 
 app = FastAPI(
     title="ChaiGaram AI Engine",
@@ -55,3 +56,4 @@ app.include_router(recommendations_router)
 app.include_router(settings_router)
 app.include_router(learning_data_router)
 app.include_router(jobs_router)
+app.include_router(vectors_router)

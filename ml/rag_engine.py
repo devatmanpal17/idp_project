@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -14,6 +15,7 @@ from threading import RLock
 from typing import Any, Dict, List, Optional
 
 import chromadb
+from .metrics import metrics
 
 
 class RAGConfigurationError(RuntimeError):
@@ -30,6 +32,8 @@ class OllamaEmbeddings:
     def embed(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
+        metrics.add("embedding_calls_total")
+        started = time.perf_counter()
         request = urllib.request.Request(
             f"{self.base_url}/api/embed",
             data=json.dumps({"model": self.model, "input": texts}).encode("utf-8"),
@@ -47,6 +51,7 @@ class OllamaEmbeddings:
         embeddings = body.get("embeddings")
         if not isinstance(embeddings, list) or len(embeddings) != len(texts):
             raise RAGConfigurationError("Ollama returned an invalid embeddings response.")
+        metrics.add("embedding_ms_total", (time.perf_counter() - started) * 1000)
         return embeddings
 
     def health(self) -> Dict[str, Any]:
@@ -107,13 +112,25 @@ def _chunk_text(text: str, chunk_words: int = 220, overlap_words: int = 40) -> L
 class RAGEngine:
     """Persistent semantic index. Similarities are raw cosine scores from Chroma."""
 
-    def __init__(self, persist_directory: Optional[Path] = None) -> None:
+    def __init__(self, persist_directory: Optional[Path] = None, state_engine=None, embeddings=None) -> None:
         root = Path(__file__).resolve().parent.parent
         self.persist_directory = persist_directory or Path(
             os.getenv("CHROMA_PERSIST_DIR", str(root / "data" / "chroma"))
         )
         self._lock = RLock()
-        self.embeddings = OllamaEmbeddings()
+        self.embeddings = embeddings or OllamaEmbeddings()
+        self.model_version = os.getenv("OLLAMA_EMBED_VERSION", self.embeddings.model)
+        if embeddings is None:
+            try:
+                with urllib.request.urlopen(f"{self.embeddings.base_url}/api/tags", timeout=2) as response:
+                    models = json.loads(response.read()).get('models', [])
+                match = next((m for m in models if m.get('name', '').split(':')[0] == self.embeddings.model.split(':')[0]), None)
+                if match and match.get('digest'):
+                    self.model_version = f"{self.embeddings.model}:{match['digest']}"
+            except (urllib.error.URLError, OSError, ValueError):
+                # Explicitly version unavailable service configurations. Never mix with a digest collection.
+                self.model_version += ':unresolved'
+        suffix = hashlib.sha256(self.model_version.encode()).hexdigest()[:16]
         chroma_host = os.getenv("CHROMA_HOST", "").strip()
         if chroma_host:
             self.client = chromadb.HttpClient(
@@ -127,10 +144,18 @@ class RAGEngine:
             self.client = chromadb.PersistentClient(path=str(self.persist_directory))
             self.storage_backend = "local"
         self.collection = self.client.get_or_create_collection(
-            name=os.getenv("CHROMA_COLLECTION", "chaigaram_lessons"),
+            name=f"chaigaram_active_{suffix}",
             metadata={"hnsw:space": "cosine"},
             embedding_function=None,
         )
+        from .analytics import quiz_analytics
+        from .vector_state import VectorState
+        self.vectors = VectorState(state_engine if state_engine is not None else quiz_analytics.engine, self)
+        self.vectors.recover()
+
+    def invalidate_cache(self) -> None:
+        if hasattr(self, 'hot_cache'):
+            self.hot_cache.clear()
 
     @property
     def count(self) -> int:
@@ -167,6 +192,8 @@ class RAGEngine:
         timestamp: str = "",
         extra_metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        if (extra_metadata or {}).get('source_type') == 'video':
+            raise ValueError('Video ingestion requires timestamped captions and observation intervals.')
         normalised = text.strip()
         chunks = _chunk_text(normalised)
         if not chunks:
@@ -201,6 +228,7 @@ class RAGEngine:
                 metadatas=metadatas,
                 embeddings=vectors,
             )
+            self.invalidate_cache()
         return {
             "document_id": document_id,
             "indexed": True,
@@ -247,6 +275,7 @@ class RAGEngine:
         if not unique_ids:
             return 0
         with self._lock:
+            self.vectors.delete(unique_ids)
             result = self.collection.get(
                 where={"document_id": {"$in": unique_ids}},
                 include=[],
@@ -257,6 +286,13 @@ class RAGEngine:
         return len(chunk_ids)
 
     def retrieve(
+        self, query: str, topic: Optional[str] = None, top_k: int = 6,
+        document_id: Optional[str] = None, require_topic: bool = False,
+    ) -> List[Dict[str, Any]]:
+        with self._lock:
+            return self._retrieve(query, topic, top_k, document_id, require_topic)
+
+    def _retrieve(
         self, query: str, topic: Optional[str] = None, top_k: int = 6,
         document_id: Optional[str] = None, require_topic: bool = False,
     ) -> List[Dict[str, Any]]:
