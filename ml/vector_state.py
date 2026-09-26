@@ -189,6 +189,7 @@ class VectorState:
         removed = 0
         with self.lock:
             for document_id in document_ids:
+                self.rag.jobs.cancel_documents([document_id])
                 with self.engine.begin() as db:
                     db.execute(text("UPDATE media_documents SET state='DELETING' WHERE id=:id"), {'id': document_id})
                 entries = self.rag.collection.get(where={'document_id': document_id}, include=[])

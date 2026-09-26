@@ -6,7 +6,7 @@ import time
 import re
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..models import (
     AskRequest,
@@ -30,8 +30,15 @@ from ml import (
 from ml.analytics import quiz_analytics
 from ml.llm_service import LLMConfigurationError
 from ml.rag_engine import RAGConfigurationError
+from ml.scheduler import controller
 
-router = APIRouter()
+
+def interactive_request():
+    with controller.interactive_work():
+        yield
+
+
+router = APIRouter(dependencies=[Depends(interactive_request)])
 
 
 def _require_source_words(text: str, source_type: str, minimum: int) -> None:
@@ -206,9 +213,12 @@ def generate_quiz(req: GenerateQuizRequest) -> Dict[str, Any]:
             raise ValueError(
                 f"No indexed lesson content exists for '{req.topic}'. Add source text first."
             )
+        if req.source_type == 'video':
+            _require_source_words(' '.join(chunk['snippet'] for chunk in chunks), 'video', max(50, req.question_count * 15))
         calibration = calibrate_difficulty(
             mastery_score=req.mastery_score,
             error_count=len(req.recent_errors or []),
+            question_count=req.question_count,
         )
         questions = llm_service.generate_quiz_with_rag(
             topic=req.topic,
@@ -266,7 +276,7 @@ def generate_quiz(req: GenerateQuizRequest) -> Dict[str, Any]:
         },
         {
             "step": "calibrate",
-            "label": "IRT difficulty calibration",
+            "label": "Heuristic difficulty selection",
             "detail": calibration["target_level"],
             "lines": [calibration["formula"], f"target success = {calibration['target_success_rate']}"],
         },
@@ -360,29 +370,3 @@ def evaluate_quiz(req: EvaluateQuizRequest) -> Dict[str, Any]:
 @router.post("/api/rag/stream-transcript")
 def stream_transcript(req: StreamTranscriptRequest) -> Dict[str, Any]:
     raise HTTPException(status_code=422, detail='Legacy timestamp-only capture is disabled. Use /api/vectors/transcript and /api/observation/intervals.')
-    # Kept temporarily below for history; unreachable legacy path removed in cleanup.
-    try:
-        indexed = rag_engine.ingest_transcript(
-            req.transcript_segment,
-            req.current_topic,
-            req.video_title,
-            req.timestamp,
-            extra_metadata={
-                "page_url": req.page_url or "",
-                "dwell_seconds": req.dwell_seconds,
-                "video_position_seconds": req.video_position_seconds or 0,
-                "video_duration_seconds": req.video_duration_seconds or 0,
-            },
-        )
-    except Exception as exc:
-        raise _service_error(exc) from exc
-    word_count = len(req.transcript_segment.split())
-    comprehension_factor = min(1.0, req.dwell_seconds / max(1, word_count * 0.3))
-    return {
-        "video": req.video_title,
-        "timestamp": req.timestamp,
-        "words_captured": word_count,
-        "live_signal_delta": round((comprehension_factor - 0.5) * 2.0, 1),
-        "status": "indexed_to_chromadb",
-        **indexed,
-    }

@@ -47,7 +47,9 @@ export function PanelHeader({
       <div className="min-w-0">
         <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
         {subtitle ? (
-          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{subtitle}</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            {subtitle}
+          </p>
         ) : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
@@ -136,14 +138,21 @@ export function StatCard({
         <span className="label-xs">{label}</span>
         <span className="text-muted-foreground/70">{icon}</span>
       </div>
-      <div className={cn("mt-5 font-display text-3xl font-semibold leading-none tracking-[-0.045em]", toneClass)}>
+      <div
+        className={cn(
+          "mt-5 font-display text-3xl font-semibold leading-none tracking-[-0.045em]",
+          toneClass,
+        )}
+      >
         {raw ? (
           <span className="num text-2xl">{raw}</span>
         ) : (
           <CountUp value={value ?? 0} decimals={decimals} suffix={suffix} />
         )}
       </div>
-      {hint ? <p className="mt-2 text-xs text-muted-foreground">{hint}</p> : null}
+      {hint ? (
+        <p className="mt-2 text-xs text-muted-foreground">{hint}</p>
+      ) : null}
       {footer}
     </Panel>
   );
@@ -152,8 +161,14 @@ export function StatCard({
 /* ------------------------------------------------------------------ */
 
 export function TrendArrow({ delta }: { delta: number }) {
-  const Icon = delta > 0.5 ? ArrowUpRight : delta < -0.5 ? ArrowDownRight : ArrowRight;
-  const tone = delta > 0.5 ? "text-positive" : delta < -0.5 ? "text-warn" : "text-muted-foreground";
+  const Icon =
+    delta > 0.5 ? ArrowUpRight : delta < -0.5 ? ArrowDownRight : ArrowRight;
+  const tone =
+    delta > 0.5
+      ? "text-positive"
+      : delta < -0.5
+        ? "text-warn"
+        : "text-muted-foreground";
   return (
     <span className={cn("inline-flex items-center gap-1 num text-xs", tone)}>
       <Icon className="h-3.5 w-3.5" />
@@ -203,7 +218,10 @@ export function SignalBar({
   ];
   return (
     <div
-      className={cn("flex h-1.5 w-full gap-px overflow-hidden rounded-full bg-muted", className)}
+      className={cn(
+        "flex h-1.5 w-full gap-px overflow-hidden rounded-full bg-muted",
+        className,
+      )}
     >
       {parts.map((p, i) => (
         <motion.div
@@ -236,7 +254,12 @@ export function Meter({
           ? "bg-muted-foreground/50"
           : "bg-primary";
   return (
-    <div className={cn("h-1.5 w-full overflow-hidden rounded-full bg-muted", className)}>
+    <div
+      className={cn(
+        "h-1.5 w-full overflow-hidden rounded-full bg-muted",
+        className,
+      )}
+    >
       <motion.div
         initial={{ width: 0 }}
         animate={{ width: `${Math.max(0, Math.min(100, value))}%` }}
@@ -303,7 +326,9 @@ export function EmptyState({
         {icon}
       </div>
       <p className="text-sm font-medium">{title}</p>
-      {hint ? <p className="max-w-sm text-xs text-muted-foreground">{hint}</p> : null}
+      {hint ? (
+        <p className="max-w-sm text-xs text-muted-foreground">{hint}</p>
+      ) : null}
       {action}
     </div>
   );
@@ -324,9 +349,13 @@ export function PageHeader({
     <div className="mb-9 flex flex-wrap items-end justify-between gap-5">
       <div>
         {eyebrow ? <div className="label-xs mb-1">{eyebrow}</div> : null}
-        <h1 className="text-3xl font-semibold tracking-[-0.045em] sm:text-4xl">{title}</h1>
+        <h1 className="text-3xl font-semibold tracking-[-0.045em] sm:text-4xl">
+          {title}
+        </h1>
         {description ? (
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            {description}
+          </p>
         ) : null}
       </div>
       {action}
@@ -348,7 +377,11 @@ export function ChartTooltipBox({
 }: {
   active?: boolean | undefined;
   payload?:
-    | Array<{ name?: string | undefined; value?: number | string | undefined; color?: string }>
+    | Array<{
+        name?: string | undefined;
+        value?: number | string | undefined;
+        color?: string;
+      }>
     | undefined;
   label?: string | number | undefined;
 }) {
@@ -359,8 +392,14 @@ export function ChartTooltipBox({
         <div className="mb-1 text-xs font-medium text-foreground">{label}</div>
       ) : null}
       {payload.map((p, i) => (
-        <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="h-2 w-2 rounded-sm" style={{ background: p.color }} />
+        <div
+          key={i}
+          className="flex items-center gap-2 text-xs text-muted-foreground"
+        >
+          <span
+            className="h-2 w-2 rounded-sm"
+            style={{ background: p.color }}
+          />
           <span>{p.name}</span>
           <span className="num ml-auto text-foreground">
             {typeof p.value === "number" ? p.value.toFixed(0) : p.value}

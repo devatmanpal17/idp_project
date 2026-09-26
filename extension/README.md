@@ -6,7 +6,7 @@ The popup includes **Open my dashboard**. Its URL can be changed in Connection s
 
 **Learn this page** now indexes the active page/video context, opens an English teaching summary, and leaves a follow-up box for any question about that source. Quizzes receive the same active-source context and are explicitly generated in English.
 
-On video pages, ChaiGaram uses only caption cues observed up to the current playback position. It does not use recommendations, comments, future captions, or content retained from a previous video. Keep English captions enabled; quiz generation waits until at least 50 caption words are available. On document pages, navigation, sidebars, related links, comments, and advertisements are removed before the lesson is indexed.
+On video pages, ChaiGaram tracks intervals of visible playback. Seeking ahead does not unlock skipped captions. Available timestamped caption tracks are sent to the backend, where future captions can be embedded into a sealed SQL store. Only chunks fully covered by observed intervals enter the searchable Chroma index. Keep English captions enabled; quiz generation waits until at least 50 observed caption words are available. On document pages, navigation, sidebars, related links, comments, and advertisements are removed before the lesson is indexed.
 
 ## Install for development
 
@@ -29,4 +29,10 @@ The extension does not run a model in the browser. Captured lesson text is embed
 
 ## Privacy
 
-Only content you explicitly save and visible captions from pages containing learning media are sent to the configured backend. **Learn this page** extracts headings, paragraphs, lists, code, quotes, and captions while excluding navigation, forms, scripts, and decorative UI. With the default URL, data stays on `localhost` and is persisted in the local ChromaDB store.
+With automatic capture enabled, available timestamped caption tracks, including future captions, are sent to the configured backend. Observation gating limits which chunks become searchable; it does not prevent future caption text from being stored or embedded. **Learn this page** extracts headings, paragraphs, lists, code, quotes, and captions while excluding navigation, forms, scripts, and decorative UI. With the default URL, backend data stays on `localhost` in SQL and ChromaDB. Pending AI request identifiers and their payload signatures are saved in extension local storage until a terminal result is received.
+
+## Interrupted requests
+
+The backend persists AI jobs and resumes queued or interrupted work after restart. Retrying the same operation with an unchanged payload after a lost extension connection reuses its request ID. Changed questions, source context, or quiz parameters create a new request. A page reload does not automatically reopen or restore the assistant's displayed response.
+
+Interactive video actions finish embedding the observed caption batches before generation. Background speculation uses a separate worker and yields between embedding calls when interactive work is active. An embedding call already in progress cannot be interrupted.

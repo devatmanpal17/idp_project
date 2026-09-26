@@ -1,3 +1,5 @@
+importScripts('connection.js');
+
 const DEFAULT_SETTINGS = {
   apiBaseUrl: "http://localhost:8000",
   dashboardUrl: "http://localhost:8080",
@@ -11,9 +13,10 @@ chrome.runtime.onInstalled.addListener(async () => {
 
 async function apiRequest(path, init = {}) {
   const { apiBaseUrl } = await chrome.storage.sync.get(DEFAULT_SETTINGS);
-  const base = String(apiBaseUrl || DEFAULT_SETTINGS.apiBaseUrl).replace(/\/$/, "");
+  const base = ChaiConnection.connectionURL(apiBaseUrl || DEFAULT_SETTINGS.apiBaseUrl);
   const response = await fetch(`${base}${path}`, {
     ...init,
+    signal: AbortSignal.timeout(180000),
     headers: { "Content-Type": "application/json", ...(init.headers || {}) },
   });
   if (!response.ok) {
@@ -30,6 +33,10 @@ async function apiRequest(path, init = {}) {
 }
 
 const handlers = {
+  TRANSCRIPT: payload => apiRequest('/api/vectors/transcript', {method:'POST',body:JSON.stringify(payload)}),
+  OBSERVE: payload => apiRequest('/api/observation/intervals', {method:'POST',body:JSON.stringify(payload)}),
+  SPECULATE: payload => apiRequest('/api/vectors/speculate', {method:'POST',body:JSON.stringify(payload)}),
+  DOCUMENT: payload => apiRequest('/api/rag/ingest', {method:'POST',body:JSON.stringify(payload)}),
   HEALTH: () => apiRequest("/api/health"),
   INGEST: (payload) => apiRequest("/api/rag/stream-transcript", {
     method: "POST",
@@ -63,7 +70,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   const handler = handlers[message?.type];
   if (!handler) return false;
 
-  handler(message.payload)
+  Promise.resolve().then(() => handler(message.payload))
     .then((data) => sendResponse({ ok: true, data }))
     .catch((error) => sendResponse({ ok: false, error: error.message || "Request failed" }));
   return true;

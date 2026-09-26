@@ -4,6 +4,7 @@ Loads .env from root, initializes CORS, registers route modules.
 """
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 # Load .env from project root (chaigaram-insight/.env)
@@ -31,10 +32,17 @@ from .routes.rag import router as rag_router
 from .routes.recommendations import router as recommendations_router
 from .routes.settings import router as settings_router
 from .routes.learning_data import router as learning_data_router
-from .routes.jobs import router as jobs_router
+from .routes.jobs import router as jobs_router, resume_jobs
 from .routes.vectors import router as vectors_router
 
+@asynccontextmanager
+async def lifespan(app):
+    resume_jobs()
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="ChaiGaram AI Engine",
     description="RAG vector search, LLM quiz generator, and learner signal intelligence.",
     version="3.0.0",
@@ -43,8 +51,9 @@ app = FastAPI(
 # Enable CORS for local development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=os.getenv('CORS_ORIGINS', 'http://localhost:8080,http://127.0.0.1:8080').split(','),
+    allow_origin_regex=r'chrome-extension://[a-p]{32}',
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

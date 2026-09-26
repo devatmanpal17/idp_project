@@ -19,7 +19,7 @@ from sqlalchemy.engine import Engine
 
 
 class QuizAnalyticsStore:
-    def __init__(self) -> None:
+    def __init__(self, engine: Engine | None = None) -> None:
         data_dir = Path(__file__).resolve().parent.parent / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
         default_url = f"sqlite:///{(data_dir / 'analytics.sqlite3').as_posix()}"
@@ -29,7 +29,7 @@ class QuizAnalyticsStore:
         elif database_url.startswith("postgresql://"):
             database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
         self.database_url = database_url
-        self.engine: Engine = create_engine(database_url, pool_pre_ping=True)
+        self.engine: Engine = engine if engine is not None else create_engine(database_url, pool_pre_ping=True)
         self._lock = RLock()
         self._initialise()
 

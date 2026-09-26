@@ -9,6 +9,8 @@ from ml.rag_engine import RAGEngine
 from ml.temporal import Caption, Interval
 from backend.models import AskRequest, GenerateQuizRequest, SummarizeRequest, RetrieveRequest
 from backend.routes import rag as routes
+from backend.routes import jobs
+from ml.scheduler import ResourceController
 
 
 class CountingEmbeddings:
@@ -90,3 +92,60 @@ class VectorPipelineTests(unittest.TestCase):
         self.assertTrue(self.rag.retrieve('Ordinary', document_id=doc['document_id']))
         self.rag.delete_documents([newer, doc['document_id']])
         self.assertEqual(self.rag.count, 0)
+
+    def test_job_restart_reuses_embedding_saved_before_checkpoint(self):
+        doc = self.rag.vectors.register('https://example.test/restart', 'Test', [
+            Caption(start_ms=0, end_ms=1000, text='First restart test sentence.'),
+            Caption(start_ms=5000, end_ms=6000, text='Second restart test sentence.')])['document_id']
+        ids = [chunk['id'] for chunk in self.rag.vectors.pending(doc)]
+        job, _ = self.rag.jobs.create('speculate', {'document_id': doc, 'chunk_ids': ids, 'budget_ms': 10000})
+        original = self.rag.jobs.checkpoint
+        def checkpoint(job_id, stage, payload):
+            if stage == 'SEALED':
+                raise KeyboardInterrupt('crash after durable embedding')
+            return original(job_id, stage, payload)
+        before = self.embed.calls
+        with patch.object(jobs, 'rag_engine', self.rag), patch.object(jobs, 'store', self.rag.jobs), patch.object(
+            jobs, 'controller', ResourceController()
+        ):
+            with patch.object(self.rag.jobs, 'checkpoint', side_effect=checkpoint):
+                with self.assertRaises(KeyboardInterrupt):
+                    jobs.run_job(job)
+            self.rag.jobs.recover()
+            jobs.run_job(job)
+        self.assertEqual(self.embed.calls - before, len(ids))
+        self.assertEqual(self.rag.jobs.get(job)['status'], 'succeeded')
+        self.assertEqual(self.rag.count, 0)
+        self.rag.delete_documents([doc])
+        self.assertEqual(self.rag.jobs.get(job)['error'], 'Document deleted')
+        self.assertNotIn('result', self.rag.jobs.get(job))
+
+    def test_cache_scopes_evidence_and_invalidates_on_mutation(self):
+        first = self.rag.ingest_document('Ordinary page contains a copper lantern.', 'Cache', 'First')
+        second = self.rag.ingest_document('Zephyr describes a silver compass.', 'Cache', 'Second')
+        one = self.rag.retrieve('lantern', document_id=first['document_id'])
+        calls = self.embed.calls
+        self.assertEqual(self.rag.retrieve('lantern', document_id=first['document_id']), one)
+        self.assertEqual(self.embed.calls, calls)
+        other = self.rag.retrieve('lantern', document_id=second['document_id'])
+        self.assertNotEqual(one[0]['chunk_id'], other[0]['chunk_id'])
+        self.rag.delete_documents([first['document_id']])
+        self.assertEqual(self.rag.retrieve('lantern', document_id=first['document_id']), [])
+        self.assertNotIn('Zephyr', str(self.rag.retrieve('zephyr', document_id=self.doc)))
+        self.observe([(5000, 6000)])
+        self.assertIn('Zephyr', str(self.rag.retrieve('zephyr', document_id=self.doc)))
+
+    def test_legacy_migration_requires_provenance_and_does_not_infer(self):
+        legacy = self.rag.client.get_or_create_collection('legacy_documents', embedding_function=None)
+        legacy.upsert(ids=['ordinary', 'video', 'unknown'], embeddings=[[1., 0., 0.]] * 3,
+            documents=['Ordinary source content'] * 3, metadatas=[
+                {'source_type': 'document', 'model_version': self.rag.model_version, 'document_id': 'legacy-doc'},
+                {'source_type': 'video', 'model_version': self.rag.model_version, 'document_id': 'old-video'},
+                {'source_type': 'document', 'document_id': 'unknown-model'}])
+        before = self.embed.calls
+        self.assertEqual(self.rag.migrate_legacy('legacy_documents')['eligible'], 1)
+        self.assertEqual(self.rag.count, 0)
+        self.assertEqual(self.rag.migrate_legacy('legacy_documents', False)['copied'], 1)
+        self.assertEqual(self.rag.migrate_legacy('legacy_documents', False)['copied'], 0)
+        self.assertEqual(legacy.count(), 3)
+        self.assertEqual(self.embed.calls, before)

@@ -33,6 +33,17 @@
     captionTrackKey: "",
     captionTrackPromise: null,
     lastCaptureAt: Date.now(),
+    observation: null,
+    trackedVideo: null,
+    mediaElementSource: '',
+    mediaCaptions: [],
+    documentId: null,
+    mediaSession: crypto.randomUUID(),
+    sequence: 0,
+    mediaSignature: '',
+    syncPromise: null,
+    visibleCue: null,
+    officialLoaded: false,
   };
   let host;
   let shadow;
@@ -51,7 +62,12 @@
   const pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
   async function runAI(operation, payload) {
-    const started = await send("JOB_START", { operation, payload });
+    const key = `chaigaram-job:${state.pageKey}:${operation}`;
+    const saved = (await chrome.storage.local.get(key))[key];
+    const signature = JSON.stringify(payload);
+    const request = saved?.signature === signature ? saved : { request_id: crypto.randomUUID(), signature };
+    await chrome.storage.local.set({ [key]: request });
+    const started = await send("JOB_START", { operation, payload, request_id: request.request_id });
     const deadline = Date.now() + 310000;
     let transientFailures = 0;
     while (Date.now() < deadline) {
@@ -59,8 +75,12 @@
       try {
         const job = await send("JOB_STATUS", { job_id: started.job_id });
         transientFailures = 0;
-        if (job.status === "succeeded") return job.result;
+        if (job.status === "succeeded") {
+          await chrome.storage.local.remove(key);
+          return job.result;
+        }
         if (job.status === "failed") {
+          await chrome.storage.local.remove(key);
           const failure = new Error(job.error || "The AI request failed.");
           failure.terminal = true;
           throw failure;
@@ -115,6 +135,12 @@
   function resetForNavigation() {
     const nextKey = currentPageKey();
     if (nextKey === state.pageKey) return;
+    state.observation?.detach();
+    state.observation = null; state.trackedVideo = null;
+    state.mediaElementSource = '';
+    state.mediaCaptions = []; state.documentId = null;
+    state.mediaSession = crypto.randomUUID(); state.sequence = 0;
+    state.mediaSignature = ''; state.visibleCue = null; state.officialLoaded = false;
     state.pageKey = nextKey;
     state.transcript = [];
     state.lastCaption = "";
@@ -182,29 +208,22 @@
     resetForNavigation();
     const video = activeVideo();
     if (video) {
-      collectNativeTextTrackCues(video);
-      const currentSeconds = Number(video.currentTime || 0);
-      const preferredSource = state.transcript.some(
-        (item) => item.pageKey === state.pageKey && item.source === "official-caption"
-      ) ? "official-caption" : state.transcript.some(
-        (item) => item.pageKey === state.pageKey && item.source === "text-track"
-      ) ? "text-track" : "caption";
-      return state.transcript
-        .filter((item) =>
-          item.pageKey === state.pageKey
-          && item.source === preferredSource
-          && item.positionSeconds <= currentSeconds + 1
-        )
-        .sort((a, b) => a.positionSeconds - b.positionSeconds)
-        .map((item) => `[${item.time}] ${item.text}`)
-        .join("\n")
-        .slice(-MAX_CONTEXT_CHARS);
+      ensureObservation(video);
+      return state.mediaCaptions.filter(cue => state.observation.tracker.covers(cue.start_ms, cue.end_ms))
+        .map(cue => cue.text).join('\n').slice(-MAX_CONTEXT_CHARS);
     }
     return (state.pageContext || learningPageText()).slice(0, MAX_CONTEXT_CHARS);
   }
 
   async function sourceContext(action, minimumVideoWords = MIN_VIDEO_QUIZ_WORDS) {
-    if (activeVideo()) await loadYouTubeCaptionCues();
+    const pageKey = state.pageKey;
+    if (activeVideo()) {
+      ensureObservation(activeVideo());
+      await loadYouTubeCaptionCues();
+      collectNativeTextTrackCues(activeVideo());
+      await syncMedia(true);
+    }
+    if (state.pageKey !== pageKey) throw new Error('The page changed. Please retry on this source.');
     const text = activePageContext();
     const kind = sourceType();
     const countableText = kind === "video" ? text.replace(/^\[[^\]]+\]\s*/gm, "") : text;
@@ -221,7 +240,8 @@
       text,
       kind,
       wordCount,
-      observedUntilSeconds: Number(activeVideo()?.currentTime || 0),
+      documentId: state.documentId,
+      observedUntilSeconds: (state.observation?.tracker.watermark || 0) / 1000,
     };
   }
 
@@ -281,17 +301,82 @@
   }
 
   function collectNativeTextTrackCues(video) {
-    const currentSeconds = Number(video.currentTime || 0);
-    let eligibleCues = 0;
-    for (const track of [...(video.textTracks || [])]) {
-      for (const cue of [...(track.cues || [])]) {
-        if (Number(cue.startTime || 0) <= currentSeconds + 1) {
-          eligibleCues += 1;
-          storeTranscriptCue(cue.text, Number(cue.startTime || 0));
-        }
-      }
+    if (state.officialLoaded) return state.mediaCaptions.length;
+    const tracks = [...(video.textTracks || [])];
+    const track = tracks.find(t => t.language?.startsWith('en')) || tracks.find(t => t.cues?.length);
+    if (!track?.cues?.length) return 0;
+    state.mediaCaptions = [...track.cues].filter(c => c.endTime > c.startTime).map(c => ({
+      start_ms: Math.floor(c.startTime * 1000), end_ms: Math.ceil(c.endTime * 1000),
+      text: String(c.text).replace(/<[^>]+>/g, ' ').trim(),
+    })).filter(c => c.text);
+    return state.mediaCaptions.length;
+  }
+
+  function ensureObservation(video) {
+    const source = video.currentSrc || video.src || '';
+    if (state.trackedVideo === video && state.mediaElementSource === source) return;
+    if (state.trackedVideo) {
+      state.mediaCaptions = []; state.documentId = null; state.mediaSignature = '';
+      state.mediaSession = crypto.randomUUID(); state.sequence = 0;
+      state.visibleCue = null; state.officialLoaded = false; state.lastCaption = '';
     }
-    return eligibleCues;
+    state.observation?.detach();
+    state.trackedVideo = video;
+    state.mediaElementSource = source;
+    state.observation = ChaiObservation.attach(video, { allowed: () => !playerIsShowingAd() });
+  }
+
+  async function syncMedia(interactive = false) {
+    if (state.syncPromise) { await state.syncPromise; if (interactive) return syncMedia(true); return; }
+    const video = activeVideo();
+    if (!video) return;
+    ensureObservation(video);
+    if (!state.mediaCaptions.length) return;
+    const pageKey = state.pageKey;
+    const observation = state.observation;
+    const stillCurrent = () => state.pageKey === pageKey && state.observation === observation;
+    const sync = async () => {
+      const captions = state.mediaCaptions.slice(0, 20000);
+      const signature = JSON.stringify(captions);
+      if (signature !== state.mediaSignature) {
+        const result = await send('TRANSCRIPT', { source_url: pageKey, topic: topic(), captions });
+        if (!stillCurrent()) return;
+        state.documentId = result.document_id;
+        state.mediaSession = crypto.randomUUID(); state.sequence = 0;
+        state.mediaSignature = signature;
+      }
+      if (!state.documentId || !stillCurrent()) return;
+      const documentId = state.documentId;
+      await send('OBSERVE', { document_id: documentId, media_session_id: state.mediaSession,
+        event_sequence: ++state.sequence, evidence: observation.evidence,
+        observed_intervals: observation.tracker.intervals.map(([start_ms, end_ms]) => ({start_ms, end_ms})) });
+      if (!stillCurrent()) return;
+      const idle = interactive || video.paused || video.readyState < 3 || document.hidden;
+      if (idle) {
+        const deadline = Date.now() + 130000;
+        do {
+          if (!stillCurrent()) return;
+          const job = await send('SPECULATE', { document_id: documentId,
+            position_ms: Math.floor(video.currentTime * 1000), idle, observed_only: interactive,
+            budget_ms: interactive ? 10000 : 2000 });
+          if (!interactive) return;
+          if (!job.job_id) {
+            if (job.pending_chunks) throw new Error('Caption indexing is busy. Please retry shortly.');
+            return;
+          }
+          while (Date.now() < deadline) {
+            if (!stillCurrent()) return;
+            const status = await send('JOB_STATUS', {job_id: job.job_id});
+            if (status.status === 'succeeded') break;
+            if (status.status === 'failed') throw new Error(status.error);
+            await pause(1000);
+          }
+        } while (Date.now() < deadline);
+        throw new Error('Caption indexing is still running. Please retry shortly.');
+      }
+    };
+    state.syncPromise = sync();
+    try { await state.syncPromise; } finally { state.syncPromise = null; }
   }
 
   function balancedJson(text, startIndex) {
@@ -349,22 +434,28 @@
     const response = await fetch(captionUrl.toString(), { credentials: "include" });
     if (!response.ok) throw new Error(`Caption track request failed (${response.status}).`);
     const payload = await response.json();
-    const observedUntil = Number(activeVideo()?.currentTime || 0) + 1;
+    const captions = [];
     let stored = 0;
     for (const event of payload.events || []) {
-      if (state.pageKey !== pageKey || !Array.isArray(event.segs)) break;
+      if (state.pageKey !== pageKey) return 0;
+      if (!Array.isArray(event.segs)) continue;
       const startSeconds = Number(event.tStartMs || 0) / 1000;
-      if (startSeconds > observedUntil) continue;
+
       const text = event.segs.map((segment) => segment.utf8 || "").join("");
       if (!text.trim() || text.trim() === "\n") continue;
-      storeTranscriptCue(text, startSeconds, "official-caption");
+      if (!(event.dDurationMs > 0)) continue;
+      captions.push({start_ms: Math.floor(startSeconds * 1000),
+        end_ms: Math.ceil(startSeconds * 1000 + event.dDurationMs), text: text.trim()});
       stored += 1;
+    }
+    if (captions.length && state.pageKey === pageKey) {
+      state.mediaCaptions = captions; state.officialLoaded = true;
     }
     return stored;
   }
 
   async function loadYouTubeCaptionCues() {
-    if (!youtubeVideoId()) return 0;
+    if (!youtubeVideoId() || state.officialLoaded) return 0;
     const pageKey = state.pageKey;
     if (state.captionTrackKey === pageKey && state.captionTrackPromise) {
       return state.captionTrackPromise;
@@ -387,6 +478,18 @@
     if (source === "caption") state.lastCaption = raw;
     if (clean.length < 2) return;
     const video = activeVideo();
+    if (video) {
+      if (state.officialLoaded) return;
+      ensureObservation(video);
+      const pos = Math.floor(video.currentTime * 1000);
+      const previous = state.visibleCue;
+      if (previous && pos > previous.start_ms && pos - previous.start_ms < 15000 &&
+          state.observation.tracker.covers(previous.start_ms, pos)) {
+        state.mediaCaptions.push({...previous, end_ms: pos});
+      }
+      state.visibleCue = {text: clean, start_ms: pos};
+      return;
+    }
     const item = {
       text: clean,
       time: timestamp(),
@@ -401,15 +504,8 @@
     trimTranscript();
     updateCaptureCount();
     try {
-      const result = await send("INGEST", {
-        video_title: document.title.slice(0, 300),
-        timestamp: item.time,
-        transcript_segment: clean,
-        current_topic: topic(),
-        dwell_seconds: dwellSeconds,
-        page_url: location.href,
-        video_position_seconds: Number(video?.currentTime || 0),
-        video_duration_seconds: Number(video?.duration || 0),
+      const result = await send("DOCUMENT", {
+        title: document.title.slice(0, 300), topic: topic(), content: clean, course: document.title.slice(0,300),
       });
       setStatus(result.indexed ? `Captured ${result.words_captured} words` : "Caption already captured", "ok");
       await refreshTopicState();
@@ -422,6 +518,7 @@
     resetForNavigation();
     const video = activeVideo();
     if (!video || playerIsShowingAd()) return;
+    ensureObservation(video);
     if (collectNativeTextTrackCues(video) > 0) return;
     const parts = [];
     const selectors = location.hostname.includes("youtube.com")
@@ -444,6 +541,22 @@
     chrome.storage.sync.get({ autoCapture: true }).then(({ autoCapture }) => {
       if (!autoCapture) return;
       const hasLearningMedia = () => Boolean(activeVideo());
+      // Attach frame observation promptly; the slower transcript sync must not
+      // miss the first seconds of a newly started video.
+      setInterval(() => {
+        const video = activeVideo();
+        if (video) ensureObservation(video);
+      }, 500);
+      setInterval(async () => {
+        resetForNavigation();
+        if (!hasLearningMedia()) return;
+        try {
+          ensureObservation(activeVideo());
+          await loadYouTubeCaptionCues();
+          collectNativeTextTrackCues(activeVideo());
+          await syncMedia();
+        } catch (error) { setStatus(`Capture sync failed: ${error.message}`, 'error'); }
+      }, 5000);
       const observer = new MutationObserver(() => {
         if (!hasLearningMedia()) return;
         clearTimeout(captureTimer);
@@ -602,8 +715,9 @@
       const data = await runAI("ask", {
         question,
         topic: topic(),
-        transcript_context: context.text,
+        transcript_context: context.kind === "video" ? null : context.text,
         source_type: context.kind,
+        document_id: context.kind === "video" ? context.documentId : null,
         observed_until_seconds: context.observedUntilSeconds,
         top_k: 5,
       });
@@ -647,15 +761,16 @@
       const requestPageKey = state.pageKey;
       setStatus(
         context.kind === "video"
-          ? `Teaching only from ${context.wordCount} caption words captured through ${formatTime(context.observedUntilSeconds)}.`
+          ? `Teaching only from ${context.wordCount} caption words from observed intervals.`
           : `Teaching only from the current document (${context.wordCount} words).`,
         "ok",
       );
       const data = await runAI("summarize", {
         topic: topic(),
-        page_content: context.text,
+        page_content: context.kind === "video" ? "" : context.text,
         page_url: location.href,
         source_type: context.kind,
+        document_id: context.kind === "video" ? context.documentId : null,
         observed_until_seconds: context.observedUntilSeconds,
       });
       if (requestPageKey !== state.pageKey) return;
@@ -685,15 +800,16 @@
       const context = await sourceContext("making a quiz");
       const requestPageKey = state.pageKey;
       const scopeMessage = context.kind === "video"
-        ? `${context.wordCount} caption words through ${formatTime(context.observedUntilSeconds)}`
+        ? `${context.wordCount} caption words from observed intervals`
         : `${context.wordCount} words from this document`;
       setStatus(`Generating an English quiz from ${scopeMessage} only.`, "ok");
       const data = await runAI("quiz", {
         topic: topic(),
-        source_context: context.text,
+        source_context: context.kind === "video" ? null : context.text,
         page_url: location.href,
         language: "English",
         source_type: context.kind,
+        document_id: context.kind === "video" ? context.documentId : null,
         observed_until_seconds: context.observedUntilSeconds,
         mastery_score: state.mastery,
         quiz_perf_pct: state.quizPerf,

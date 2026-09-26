@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Path, Query
 
 from ml import rag_engine
 from ml.analytics import quiz_analytics
+from ml.recall import RecallModel
 
 router = APIRouter()
 
@@ -149,6 +150,7 @@ def _history_entries(documents: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any
 def build_learning_data() -> Dict[str, Any]:
     records = rag_engine.catalogue_records()
     attempts = quiz_analytics.attempts()
+    recall = RecallModel(attempts)
     summaries = {item["topic"]: item for item in quiz_analytics.topic_summaries()}
 
     by_document = _document_catalogue(records)
@@ -199,6 +201,7 @@ def build_learning_data() -> Dict[str, Any]:
                 ),
                 "indexed_chunks": sum(int(item.get("chunk_count", 0)) for item in documents),
                 "assessed": bool(summary),
+                "recall": recall.forecast(topic),
             }
         )
 
@@ -352,6 +355,9 @@ def build_learning_data() -> Dict[str, Any]:
             event_pattern = [(2, "review"), (7, "quiz"), (14, "review")]
         else:
             event_pattern = [(4, "review"), (14, "quiz"), (30, "review")]
+        if topic_item['assessed']:
+            due = topic_item['recall']['review_in_days']
+            event_pattern = [(due, 'review'), (due + 3, 'quiz'), (due + 7, 'review')]
         for offset_days, event_type in event_pattern:
             scheduled_at = first_slot + timedelta(days=offset_days)
             study_events.append(
@@ -402,6 +408,7 @@ def build_learning_data() -> Dict[str, Any]:
         )
     activities.sort(key=lambda item: item["created_at"], reverse=True)
     return {
+        "recall_model": recall.diagnostics(),
         "courses": courses,
         "topics": topics,
         "quizzes": quizzes,

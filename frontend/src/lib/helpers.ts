@@ -18,7 +18,11 @@ export function relativeTime(iso: string) {
 }
 
 /** Ebbinghaus-style retention decay: stronger mastery decays slower. */
-export function retentionCurve(mastery: number, days: number, reviews: number[] = []) {
+export function retentionCurve(
+  mastery: number,
+  days: number,
+  reviews: number[] = [],
+) {
   const points: { day: number; retention: number }[] = [];
   let strength = 1 + mastery / 40;
   let lastReview = 0;

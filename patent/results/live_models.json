@@ -1,0 +1,33 @@
+{
+  "kind": "real local Ollama smoke test",
+  "checks": [
+    {
+      "name": "document_embedding",
+      "passed": true,
+      "seconds": 0.6504516999993939
+    },
+    {
+      "name": "retrieval",
+      "passed": true,
+      "seconds": 0.050696699996478856
+    },
+    {
+      "name": "grounded_answer",
+      "passed": true,
+      "seconds": 4.538399700002628
+    },
+    {
+      "name": "summary",
+      "passed": true,
+      "seconds": 13.562773300000117
+    },
+    {
+      "name": "grounded_quiz",
+      "passed": true,
+      "seconds": 22.630113399995025
+    }
+  ],
+  "embedding_model": "embeddinggemma",
+  "chat_model": "llama3.2:3b",
+  "quiz_question": "In a binary search algorithm, what happens to the lower bound when the target is absent?"
+}

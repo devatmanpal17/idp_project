@@ -21,7 +21,12 @@ import {
   Wand2,
   X,
 } from "lucide-react";
-import { coursesQuery, topicsQuery, SIGNAL_WEIGHTS, type Topic } from "@/lib/chaigaram";
+import {
+  coursesQuery,
+  topicsQuery,
+  SIGNAL_WEIGHTS,
+  type Topic,
+} from "@/lib/chaigaram";
 import {
   Panel,
   PanelHeader,
@@ -58,7 +63,9 @@ function TopicMasteryScreen() {
   // Filter topics
   const filteredTopics = useMemo(() => {
     const list =
-      selectedCourseId === "all" ? topics : topics.filter((t) => t.course_id === selectedCourseId);
+      selectedCourseId === "all"
+        ? topics
+        : topics.filter((t) => t.course_id === selectedCourseId);
     return [...list].sort((a, b) => {
       const valA = a[sortField];
       const valB = b[sortField];
@@ -101,8 +108,8 @@ function TopicMasteryScreen() {
             Topic Mastery & Decomposition
           </h1>
           <p className="text-xs text-muted-foreground">
-            Multi-signal synthesis evaluating comprehension across quiz accuracy, dwell time, and
-            revisit intervals.
+            Multi-signal synthesis evaluating comprehension across quiz
+            accuracy, dwell time, and revisit intervals.
           </p>
         </div>
 
@@ -114,7 +121,9 @@ function TopicMasteryScreen() {
             onChange={(e) => setSelectedCourseId(e.target.value)}
             className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
           >
-            <option value="all">All Tracked Courses ({topics.length} topics)</option>
+            <option value="all">
+              All Tracked Courses ({topics.length} topics)
+            </option>
             {courses.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.title}
@@ -125,8 +134,13 @@ function TopicMasteryScreen() {
       </div>
 
       {error && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/8 p-4 text-xs text-destructive">
-          {error instanceof Error ? error.message : "Mastery data could not be loaded."}
+        <div
+          role="alert"
+          className="rounded-lg border border-destructive/30 bg-destructive/8 p-4 text-xs text-destructive"
+        >
+          {error instanceof Error
+            ? error.message
+            : "Mastery data could not be loaded."}
         </div>
       )}
 
@@ -144,71 +158,113 @@ function TopicMasteryScreen() {
             ) : filteredTopics.length === 0 ? (
               <div className="flex h-[320px] flex-col items-center justify-center text-center">
                 <RadarIcon className="h-7 w-7 text-muted-foreground" />
-                <p className="mt-3 text-sm font-semibold">No mastery signals yet</p>
-                <p className="mt-1 max-w-sm text-xs text-muted-foreground">Capture a learning page or video. Dwell time and revisits appear immediately; quiz accuracy is added after your first drill.</p>
+                <p className="mt-3 text-sm font-semibold">
+                  No mastery signals yet
+                </p>
+                <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+                  Capture a learning page or video. Dwell time and revisits
+                  appear immediately; quiz accuracy is added after your first
+                  drill.
+                </p>
               </div>
             ) : filteredTopics.length < 3 ? (
               <div className="flex h-[320px] flex-col justify-center gap-6 px-4 sm:px-10">
                 {filteredTopics.map((topic) => (
                   <div key={topic.id}>
                     <div className="flex items-end justify-between gap-4">
-                      <div className="min-w-0"><p className="truncate text-sm font-semibold">{topic.title}</p><p className="mt-1 text-[10px] text-muted-foreground">Quiz {topic.quiz_perf_pct}% · Time {topic.time_on_section_pct}% · Revisit {topic.revisit_frequency_pct}%</p></div>
-                      <span className="text-xl font-semibold text-primary">{topic.mastery_score}%</span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">
+                          {topic.title}
+                        </p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                          Quiz {topic.quiz_perf_pct}% · Time{" "}
+                          {topic.time_on_section_pct}% · Revisit{" "}
+                          {topic.revisit_frequency_pct}%
+                        </p>
+                      </div>
+                      <span className="text-xl font-semibold text-primary">
+                        {topic.mastery_score}%
+                      </span>
                     </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, topic.mastery_score))}%` }} /></div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, topic.mastery_score))}%`,
+                        }}
+                      />
+                    </div>
                   </div>
                 ))}
-                <p className="text-center text-[10px] text-muted-foreground">The radar view activates automatically after three topics are tracked.</p>
+                <p className="text-center text-[10px] text-muted-foreground">
+                  The radar view activates automatically after three topics are
+                  tracked.
+                </p>
               </div>
-            ) : <div className="h-[320px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
-                  <PolarGrid stroke="var(--border)" opacity={0.6} />
-                  <PolarAngleAxis
-                    dataKey="topic"
-                    tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-                  />
-                  <PolarRadiusAxis
-                    angle={30}
-                    domain={[0, 100]}
-                    stroke="var(--border)"
-                    tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
-                  />
-                  <Tooltip
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null;
-                      const d = payload[0]?.payload;
-                      return (
-                        <div className="rounded-md border border-border bg-popover p-2.5 text-xs shadow-md">
-                          <p className="font-semibold text-foreground">{d.fullTopic}</p>
-                          <div className="mt-1 space-y-0.5 text-muted-foreground">
-                            <p>
-                              Mastery Score:{" "}
-                              <span className="num font-semibold text-primary">{d.mastery}%</span>
+            ) : (
+              <div className="h-[320px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart
+                    cx="50%"
+                    cy="50%"
+                    outerRadius="80%"
+                    data={radarData}
+                  >
+                    <PolarGrid stroke="var(--border)" opacity={0.6} />
+                    <PolarAngleAxis
+                      dataKey="topic"
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+                    />
+                    <PolarRadiusAxis
+                      angle={30}
+                      domain={[0, 100]}
+                      stroke="var(--border)"
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
+                    />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const d = payload[0]?.payload;
+                        return (
+                          <div className="rounded-md border border-border bg-popover p-2.5 text-xs shadow-md">
+                            <p className="font-semibold text-foreground">
+                              {d.fullTopic}
                             </p>
-                            <p>
-                              Quiz Accuracy:{" "}
-                              <span className="num font-semibold text-foreground">{d.quiz}%</span>
-                            </p>
-                            <p>
-                              Time on Section:{" "}
-                              <span className="num font-semibold text-foreground">{d.time}%</span>
-                            </p>
+                            <div className="mt-1 space-y-0.5 text-muted-foreground">
+                              <p>
+                                Mastery Score:{" "}
+                                <span className="num font-semibold text-primary">
+                                  {d.mastery}%
+                                </span>
+                              </p>
+                              <p>
+                                Quiz Accuracy:{" "}
+                                <span className="num font-semibold text-foreground">
+                                  {d.quiz}%
+                                </span>
+                              </p>
+                              <p>
+                                Time on Section:{" "}
+                                <span className="num font-semibold text-foreground">
+                                  {d.time}%
+                                </span>
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    }}
-                  />
-                  <Radar
-                    name="Mastery Score"
-                    dataKey="mastery"
-                    stroke="var(--primary)"
-                    fill="var(--primary)"
-                    fillOpacity={0.25}
-                  />
-                </RadarChart>
-              </ResponsiveContainer>
-            </div>}
+                        );
+                      }}
+                    />
+                    <Radar
+                      name="Mastery Score"
+                      dataKey="mastery"
+                      stroke="var(--primary)"
+                      fill="var(--primary)"
+                      fillOpacity={0.25}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </div>
         </Panel>
 
@@ -219,48 +275,57 @@ function TopicMasteryScreen() {
               <div className="grid h-7 w-7 place-items-center rounded bg-primary/10 text-primary">
                 <Calculator className="h-4 w-4" />
               </div>
-              <h3 className="text-sm font-semibold text-foreground">ChaiGaram Mastery Formula</h3>
+              <h3 className="text-sm font-semibold text-foreground">
+                ChaiGaram Mastery Formula
+              </h3>
             </div>
 
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-              Unlike video completion alone, ChaiGaram computes true retention through continuous
-              Bayesian updates combining 3 weighted DOM signals:
+              This mastery score is a weighted estimate combining three learning
+              signals. It is separate from assessment mastery and the recall
+              forecast:
             </p>
 
             <div className="mt-4 space-y-3">
               <div className="rounded-md border border-border bg-surface-2 p-3">
                 <div className="flex justify-between text-xs font-semibold text-foreground">
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-primary" /> Quiz Performance
+                    <span className="h-2 w-2 rounded-full bg-primary" /> Quiz
+                    Performance
                   </span>
                   <span className="num text-primary">40% Weight</span>
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Accuracy on active retrieval drills & schema-validated questions.
+                  Accuracy on active retrieval drills & schema-validated
+                  questions.
                 </p>
               </div>
 
               <div className="rounded-md border border-border bg-surface-2 p-3">
                 <div className="flex justify-between text-xs font-semibold text-foreground">
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-accent" /> Dwell Time-on-Section
+                    <span className="h-2 w-2 rounded-full bg-accent" /> Dwell
+                    Time-on-Section
                   </span>
                   <span className="num text-accent">35% Weight</span>
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Normalized duration spent reading transcript sections and code snippets.
+                  Normalized duration spent reading transcript sections and code
+                  snippets.
                 </p>
               </div>
 
               <div className="rounded-md border border-border bg-surface-2 p-3">
                 <div className="flex justify-between text-xs font-semibold text-foreground">
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-warn" /> Revisit Interval
+                    <span className="h-2 w-2 rounded-full bg-warn" /> Revisit
+                    Interval
                   </span>
                   <span className="num text-warn">25% Weight</span>
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Frequency of returning to concepts aligned with the Ebbinghaus forgetting curve.
+                  Frequency of returning to concepts aligned with the Ebbinghaus
+                  forgetting curve.
                 </p>
               </div>
             </div>
@@ -268,7 +333,9 @@ function TopicMasteryScreen() {
 
           <div className="mt-4 rounded border border-primary/20 bg-primary/5 p-2.5 text-[11px] text-muted-foreground">
             <span className="font-semibold text-foreground">Formula:</span>{" "}
-            <span className="num">Mastery = 0.40×Quiz + 0.35×Time + 0.25×Revisit</span>
+            <span className="num">
+              Mastery = 0.40×Quiz + 0.35×Time + 0.25×Revisit
+            </span>
           </div>
         </Panel>
       </div>
@@ -293,32 +360,40 @@ function TopicMasteryScreen() {
                   onClick={() => handleSort("quiz_perf_pct")}
                   className="cursor-pointer px-3 py-3 font-medium hover:text-foreground"
                 >
-                  Quiz (40%) {sortField === "quiz_perf_pct" && (sortAsc ? "▲" : "▼")}
+                  Quiz (40%){" "}
+                  {sortField === "quiz_perf_pct" && (sortAsc ? "▲" : "▼")}
                 </th>
                 <th
                   onClick={() => handleSort("time_on_section_pct")}
                   className="cursor-pointer px-3 py-3 font-medium hover:text-foreground"
                 >
-                  Time (35%) {sortField === "time_on_section_pct" && (sortAsc ? "▲" : "▼")}
+                  Time (35%){" "}
+                  {sortField === "time_on_section_pct" && (sortAsc ? "▲" : "▼")}
                 </th>
                 <th
                   onClick={() => handleSort("revisit_frequency_pct")}
                   className="cursor-pointer px-3 py-3 font-medium hover:text-foreground"
                 >
-                  Revisit (25%) {sortField === "revisit_frequency_pct" && (sortAsc ? "▲" : "▼")}
+                  Revisit (25%){" "}
+                  {sortField === "revisit_frequency_pct" &&
+                    (sortAsc ? "▲" : "▼")}
                 </th>
-                <th className="w-32 px-3 py-3 font-medium">Signal Composition</th>
+                <th className="w-32 px-3 py-3 font-medium">
+                  Signal Composition
+                </th>
                 <th
                   onClick={() => handleSort("mastery_score")}
                   className="cursor-pointer px-3 py-3 font-medium hover:text-foreground"
                 >
-                  Mastery Score {sortField === "mastery_score" && (sortAsc ? "▲" : "▼")}
+                  Mastery Score{" "}
+                  {sortField === "mastery_score" && (sortAsc ? "▲" : "▼")}
                 </th>
                 <th
                   onClick={() => handleSort("trend_delta")}
                   className="cursor-pointer px-3 py-3 font-medium hover:text-foreground"
                 >
-                  Weekly Trend {sortField === "trend_delta" && (sortAsc ? "▲" : "▼")}
+                  Weekly Trend{" "}
+                  {sortField === "trend_delta" && (sortAsc ? "▲" : "▼")}
                 </th>
                 <th className="px-4 py-3 text-right font-medium">Inspect</th>
               </tr>
@@ -330,8 +405,12 @@ function TopicMasteryScreen() {
                   onClick={() => setInspectTopic(topic)}
                   className="cursor-pointer transition-colors hover:bg-surface-2/60"
                 >
-                  <td className="px-4 py-3 font-semibold text-foreground">{topic.title}</td>
-                  <td className="num px-3 py-3 text-muted-foreground">{topic.quiz_perf_pct}%</td>
+                  <td className="px-4 py-3 font-semibold text-foreground">
+                    {topic.title}
+                  </td>
+                  <td className="num px-3 py-3 text-muted-foreground">
+                    {topic.quiz_perf_pct}%
+                  </td>
                   <td className="num px-3 py-3 text-muted-foreground">
                     {topic.time_on_section_pct}%
                   </td>
@@ -366,7 +445,11 @@ function TopicMasteryScreen() {
               ))}
             </tbody>
           </table>
-          {!isLoading && filteredTopics.length === 0 && <div className="px-6 py-10 text-center text-xs text-muted-foreground">No topics match this course filter.</div>}
+          {!isLoading && filteredTopics.length === 0 && (
+            <div className="px-6 py-10 text-center text-xs text-muted-foreground">
+              No topics match this course filter.
+            </div>
+          )}
         </div>
       </Panel>
 
@@ -376,7 +459,9 @@ function TopicMasteryScreen() {
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-border bg-surface p-6 shadow-2xl">
             <div className="flex items-start justify-between">
               <div>
-                <span className="label-xs text-primary">TOPIC TELEMETRY BREAKDOWN</span>
+                <span className="label-xs text-primary">
+                  TOPIC TELEMETRY BREAKDOWN
+                </span>
                 <h2 className="font-display text-xl font-bold text-foreground">
                   {inspectTopic.title}
                 </h2>
@@ -396,8 +481,9 @@ function TopicMasteryScreen() {
                   Calculated Formula Verification:
                 </div>
                 <div className="num mt-2 font-mono text-xs leading-relaxed text-muted-foreground">
-                  (0.40 × {inspectTopic.quiz_perf_pct}) + (0.35 × {inspectTopic.time_on_section_pct}
-                  ) + (0.25 × {inspectTopic.revisit_frequency_pct})
+                  (0.40 × {inspectTopic.quiz_perf_pct}) + (0.35 ×{" "}
+                  {inspectTopic.time_on_section_pct}) + (0.25 ×{" "}
+                  {inspectTopic.revisit_frequency_pct})
                   <br />={" "}
                   <span className="font-semibold text-foreground">
                     {(0.4 * inspectTopic.quiz_perf_pct).toFixed(1)} +{" "}

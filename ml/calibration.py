@@ -1,12 +1,12 @@
 """
 ChaiGaram ML — Learner Signal Difficulty Calibration
-Implements adaptive item calibration using mastery, error rates, dwell time, and Bayesian difficulty updating.
+Heuristic difficulty from mastery/errors and a fixed-rate mastery update.
 """
 
 from typing import Dict, Any
 
 
-def calibrate_difficulty(mastery_score: float, error_count: int = 0) -> Dict[str, Any]:
+def calibrate_difficulty(mastery_score: float, error_count: int = 0, question_count: int = 4) -> Dict[str, Any]:
     """
     Calculates adaptive difficulty and question mix based on learner signals.
     Formula: clamp(mastery/100 + 0.15 - error_penalty, 0.25, 0.85)
@@ -17,27 +17,25 @@ def calibrate_difficulty(mastery_score: float, error_count: int = 0) -> Dict[str
 
     # Determine question mix based on difficulty thresholds
     if difficulty >= 0.70:
-        mix = {"mcq": 2, "short_answer": 2}
         target_level = "Advanced Application & Synthesis"
     elif difficulty >= 0.50:
-        mix = {"mcq": 3, "short_answer": 1}
         target_level = "Intermediate Comprehension"
     else:
-        mix = {"mcq": 4, "short_answer": 0}
         target_level = "Foundational Recall & Reinforcement"
 
     return {
         "difficulty": round(difficulty, 2),
         "target_success_rate": 0.70,
         "target_level": target_level,
-        "mix": mix,
+        "mix": {"mcq": question_count, "short_answer": 0},
+        "method": "mastery_error_heuristic",
         "formula": f"clamp(mastery/100 + 0.15 - {error_penalty:.2f}, 0.25, 0.85) -> {difficulty:.2f}"
     }
 
 
 def compute_mastery_update(score_pct: float, current_mastery: float) -> Dict[str, Any]:
     """
-    Bayesian-inspired mastery score updater.
+    Fixed-rate mastery score updater, not a fitted Bayesian model.
     Adjusts learner mastery proportionally based on test score delta.
     """
     mastery_delta = round((score_pct - current_mastery) * 0.22, 1)

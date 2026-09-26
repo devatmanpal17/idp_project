@@ -15,8 +15,18 @@ import {
   Database,
   Loader2,
 } from "lucide-react";
-import { quizzesQuery, topicsQuery, coursesQuery, relativeTime, type Quiz } from "@/lib/chaigaram";
-import { Panel, PanelHeader, MasteryPill } from "@/components/chaigaram/primitives";
+import {
+  quizzesQuery,
+  topicsQuery,
+  coursesQuery,
+  relativeTime,
+  type Quiz,
+} from "@/lib/chaigaram";
+import {
+  Panel,
+  PanelHeader,
+  MasteryPill,
+} from "@/components/chaigaram/primitives";
 import { QuizGenerator } from "@/components/chaigaram/QuizGenerator";
 import { fetchIndexedTopics, ingestRAGDocument } from "@/lib/ai-client";
 
@@ -24,7 +34,10 @@ export const Route = createFileRoute("/quizzes")({
   head: () => ({
     meta: [
       { title: "Quizzes | ChaiGaram" },
-      { name: "description", content: "AI RAG quiz generation, history, and assessment review" },
+      {
+        name: "description",
+        content: "AI RAG quiz generation, history, and assessment review",
+      },
     ],
   }),
   component: QuizzesScreen,
@@ -35,7 +48,9 @@ function QuizzesScreen() {
   const { data: topics = [] } = useQuery(topicsQuery);
   const { data: courses = [] } = useQuery(coursesQuery);
 
-  const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(quizzes[0] || null);
+  const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(
+    quizzes[0] || null,
+  );
   const [generatorOpen, setGeneratorOpen] = useState(false);
   const [quizTopic, setQuizTopic] = useState("");
   const [indexedTopics, setIndexedTopics] = useState<string[]>([]);
@@ -46,11 +61,16 @@ function QuizzesScreen() {
   const [ingestMessage, setIngestMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchIndexedTopics().then(setIndexedTopics).catch(() => setIndexedTopics([]));
+    fetchIndexedTopics()
+      .then(setIndexedTopics)
+      .catch(() => setIndexedTopics([]));
   }, []);
 
   const availableTopics = useMemo(
-    () => Array.from(new Set([...indexedTopics, ...topics.map((topic) => topic.title)])),
+    () =>
+      Array.from(
+        new Set([...indexedTopics, ...topics.map((topic) => topic.title)]),
+      ),
     [indexedTopics, topics],
   );
 
@@ -71,12 +91,16 @@ function QuizzesScreen() {
         topic: sourceTopic,
         content: sourceContent,
       });
-      setIngestMessage(`Indexed ${result.chunks_indexed} semantic chunks in ChromaDB.`);
+      setIngestMessage(
+        `Indexed ${result.chunks_indexed} semantic chunks in ChromaDB.`,
+      );
       setQuizTopic(sourceTopic);
       setIndexedTopics(await fetchIndexedTopics());
       setSourceContent("");
     } catch (error) {
-      setIngestMessage(error instanceof Error ? error.message : "Ingestion failed.");
+      setIngestMessage(
+        error instanceof Error ? error.message : "Ingestion failed.",
+      );
     } finally {
       setIngesting(false);
     }
@@ -91,8 +115,8 @@ function QuizzesScreen() {
             Assessment Quizzes & RAG Generator
           </h1>
           <p className="text-xs text-muted-foreground">
-            Active retrieval practice powered by lecture vector embeddings, difficulty calibration,
-            and structured LLM validation.
+            Active retrieval practice powered by lecture vector embeddings,
+            difficulty calibration, and structured LLM validation.
           </p>
         </div>
 
@@ -109,9 +133,12 @@ function QuizzesScreen() {
         <div className="mb-3 flex items-center gap-2">
           <Database className="h-4 w-4 text-accent" />
           <div>
-            <h2 className="text-sm font-semibold text-foreground">Add real lesson evidence</h2>
+            <h2 className="text-sm font-semibold text-foreground">
+              Add real lesson evidence
+            </h2>
             <p className="text-[11px] text-muted-foreground">
-              Paste notes or a transcript. It is chunked, embedded by Ollama, and persisted in ChromaDB.
+              Paste notes or a transcript. It is chunked, embedded by Ollama,
+              and persisted in ChromaDB.
             </p>
           </div>
         </div>
@@ -137,14 +164,25 @@ function QuizzesScreen() {
           className="mt-2 w-full rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-foreground"
         />
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          <span className="text-[11px] text-muted-foreground">{ingestMessage}</span>
+          <span className="text-[11px] text-muted-foreground">
+            {ingestMessage}
+          </span>
           <button
             type="button"
             onClick={handleIngest}
-            disabled={ingesting || sourceTitle.trim().length < 2 || sourceTopic.trim().length < 2 || sourceContent.trim().length < 20}
+            disabled={
+              ingesting ||
+              sourceTitle.trim().length < 2 ||
+              sourceTopic.trim().length < 2 ||
+              sourceContent.trim().length < 20
+            }
             className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 text-xs font-medium text-accent-foreground disabled:opacity-50"
           >
-            {ingesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Database className="h-3.5 w-3.5" />}
+            {ingesting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Database className="h-3.5 w-3.5" />
+            )}
             Index in ChromaDB
           </button>
         </div>
@@ -155,7 +193,9 @@ function QuizzesScreen() {
         <Panel className="border-primary/50 bg-surface p-6 shadow-xl ring-1 ring-primary/20">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <span className="label-xs text-primary">RETRIEVAL-AUGMENTED GENERATION</span>
+              <span className="label-xs text-primary">
+                RETRIEVAL-AUGMENTED GENERATION
+              </span>
               <h2 className="font-display text-base font-bold text-foreground">
                 Generate Adaptive Practice Quiz
               </h2>
@@ -185,7 +225,9 @@ function QuizzesScreen() {
 
           <QuizGenerator
             topicTitle={quizTopic}
-            masteryScore={topics.find((t) => t.title === quizTopic)?.mastery_score ?? 0}
+            masteryScore={
+              topics.find((t) => t.title === quizTopic)?.mastery_score ?? 0
+            }
             onMasteryUpdated={(newScore) => {
               console.log("Mastery updated to:", newScore);
             }}
@@ -197,7 +239,10 @@ function QuizzesScreen() {
       <div className="grid grid-cols-1 gap-7 xl:grid-cols-3">
         {/* Quiz History List */}
         <Panel>
-          <PanelHeader title="Past Assessments" subtitle={`${quizzes.length} completed sessions`} />
+          <PanelHeader
+            title="Past Assessments"
+            subtitle={`${quizzes.length} completed sessions`}
+          />
           <div className="divide-y divide-border p-2">
             {quizzes.map((quiz) => {
               const topicObj = topics.find((t) => t.id === quiz.topic_id);
@@ -209,7 +254,9 @@ function QuizzesScreen() {
                   key={quiz.id}
                   onClick={() => setSelectedQuiz(quiz)}
                   className={`cursor-pointer rounded-md p-3 transition-colors ${
-                    isSelected ? "border border-primary/40 bg-primary/10" : "hover:bg-surface-2"
+                    isSelected
+                      ? "border border-primary/40 bg-primary/10"
+                      : "hover:bg-surface-2"
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -231,11 +278,15 @@ function QuizzesScreen() {
 
                   <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
                     <span>{courseObj?.title || "Course"}</span>
-                    <span className="num">{relativeTime(quiz.completed_at)}</span>
+                    <span className="num">
+                      {relativeTime(quiz.completed_at)}
+                    </span>
                   </div>
 
                   <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
-                    <span className="capitalize">{quiz.question_type} format</span>
+                    <span className="capitalize">
+                      {quiz.question_type} format
+                    </span>
                     <span>{quiz.questions?.length || 2} questions</span>
                   </div>
                 </div>
@@ -263,7 +314,8 @@ function QuizzesScreen() {
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
                 <div>
                   <h3 className="font-display text-sm font-bold text-foreground">
-                    {topics.find((t) => t.id === selectedQuiz.topic_id)?.title || "Assessment"}
+                    {topics.find((t) => t.id === selectedQuiz.topic_id)
+                      ?.title || "Assessment"}
                   </h3>
                   <p className="text-[11px] text-muted-foreground">
                     Completed {relativeTime(selectedQuiz.completed_at)} · Type:{" "}
@@ -273,7 +325,9 @@ function QuizzesScreen() {
 
                 <button
                   onClick={() => {
-                    const title = topics.find((t) => t.id === selectedQuiz.topic_id)?.title;
+                    const title = topics.find(
+                      (t) => t.id === selectedQuiz.topic_id,
+                    )?.title;
                     if (title) setQuizTopic(title);
                     setGeneratorOpen(true);
                   }}
@@ -295,7 +349,9 @@ function QuizzesScreen() {
                         <span className="num text-xs font-bold text-muted-foreground">
                           {String(idx + 1).padStart(2, "0")}.
                         </span>
-                        <p className="text-xs font-semibold text-foreground">{q.q}</p>
+                        <p className="text-xs font-semibold text-foreground">
+                          {q.q}
+                        </p>
                       </div>
                       {q.correct ? (
                         <span className="inline-flex items-center gap-1 rounded bg-positive/15 px-2 py-0.5 text-[10px] font-semibold text-positive">
@@ -333,18 +389,23 @@ function QuizzesScreen() {
                     {!q.choices && (
                       <div className="space-y-1 pl-4 text-xs">
                         <p className="text-muted-foreground">
-                          <span className="font-medium text-foreground">Your answer:</span>{" "}
+                          <span className="font-medium text-foreground">
+                            Your answer:
+                          </span>{" "}
                           {q.given}
                         </p>
                         <p className="text-positive">
-                          <span className="font-medium">Model answer:</span> {q.answer}
+                          <span className="font-medium">Model answer:</span>{" "}
+                          {q.answer}
                         </p>
                       </div>
                     )}
 
                     {/* LLM Explanation Box */}
                     <div className="rounded border border-border/60 bg-surface p-2.5 text-[11px] leading-relaxed text-muted-foreground">
-                      <span className="font-semibold text-foreground">LLM Explanation:</span>{" "}
+                      <span className="font-semibold text-foreground">
+                        LLM Explanation:
+                      </span>{" "}
                       {q.explanation}
                     </div>
                   </div>

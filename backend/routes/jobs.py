@@ -1,85 +1,84 @@
-"""Short-lived HTTP job API for LLM work that outlives MV3 message channels."""
-
-from __future__ import annotations
-
+"""Durable HTTP jobs independent of extension service-worker lifetime."""
 import time
-import uuid
 from concurrent.futures import ThreadPoolExecutor
-from threading import RLock
-from typing import Any, Dict
-
 from fastapi import APIRouter, HTTPException
-
+from pydantic import ValidationError
 from ..models import AIJobRequest, AskRequest, GenerateQuizRequest, SummarizeRequest
 from .rag import ask_lesson, generate_quiz, summarize_page
+from ml import rag_engine
+from ml.scheduler import controller
 
 router = APIRouter()
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="chaigaram-ai")
-_lock = RLock()
-_jobs: Dict[str, Dict[str, Any]] = {}
+_speculation_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chaigaram-speculation")
+store = rag_engine.jobs
+MODELS = {"ask": AskRequest, "quiz": GenerateQuizRequest, "summarize": SummarizeRequest}
+HANDLERS = {"ask": ask_lesson, "quiz": generate_quiz, "summarize": summarize_page}
 
 
-def _run_job(job_id: str, request: AIJobRequest) -> None:
-    with _lock:
-        _jobs[job_id].update(status="running", updated_at=time.time())
+def run_job(job_id):
+    if not store.claim(job_id):
+        return
+    job = store.get(job_id, private=True)
     try:
-        if request.operation == "ask":
-            result = ask_lesson(AskRequest.model_validate(request.payload))
-        elif request.operation == "summarize":
-            result = summarize_page(SummarizeRequest.model_validate(request.payload))
-        else:
-            result = generate_quiz(GenerateQuizRequest.model_validate(request.payload))
-    except HTTPException as exc:
-        error = str(exc.detail)
-        with _lock:
-            _jobs[job_id].update(status="failed", error=error, updated_at=time.time())
-    except Exception as exc:
-        with _lock:
-            _jobs[job_id].update(
-                status="failed", error=str(exc) or "The AI job failed.", updated_at=time.time()
-            )
-    else:
-        with _lock:
-            _jobs[job_id].update(status="succeeded", result=result, updated_at=time.time())
-
-
-def _prune_jobs() -> None:
-    with _lock:
-        if len(_jobs) <= 100:
+        payload = job['payload']
+        if job['stage'] == 'VALIDATING' and 'result' in job['checkpoint']:
+            store.finish(job_id, result=job['checkpoint']['result'])
             return
-        completed = sorted(
-            (
-                (job_id, job["updated_at"])
-                for job_id, job in _jobs.items()
-                if job["status"] in {"succeeded", "failed"}
-            ),
-            key=lambda item: item[1],
-        )
-        for job_id, _ in completed[: len(_jobs) - 100]:
-            _jobs.pop(job_id, None)
+        if job['operation'] == 'speculate':
+            started = time.perf_counter()
+            for chunk_id in payload['chunk_ids']:
+                if store.get(job_id)['status'] != 'running':
+                    return
+                if controller.interactive or (time.perf_counter()-started)*1000 >= payload['budget_ms']:
+                    break
+                tick = time.perf_counter()
+                store.checkpoint(job_id, 'EMBEDDING', {'current_chunk': chunk_id})
+                # Recheck admission after waiting for an in-flight vector mutation.
+                with rag_engine._lock:
+                    if controller.interactive or store.get(job_id)['status'] != 'running':
+                        break
+                    embedded = rag_engine.vectors.embed_chunk(payload['document_id'], chunk_id)
+                if embedded:
+                    controller.measured((time.perf_counter()-tick)*1000)
+                store.checkpoint(job_id, 'SEALED', {'last_completed_chunk': chunk_id})
+            result = rag_engine.vectors.status(payload['document_id'])
+        else:
+            with controller.interactive_work():
+                store.checkpoint(job_id, 'GENERATING', job['checkpoint'])
+                result = HANDLERS[job['operation']](MODELS[job['operation']].model_validate(payload))
+                store.checkpoint(job_id, 'VALIDATING', {'result': result})
+        store.finish(job_id, result=result)
+    except Exception as exc:
+        store.finish(job_id, error=str(exc.detail) if isinstance(exc, HTTPException) else str(exc) or 'The AI job failed.')
 
 
-@router.post("/api/jobs", status_code=202)
-def create_job(request: AIJobRequest) -> Dict[str, Any]:
-    _prune_jobs()
-    job_id = uuid.uuid4().hex
-    now = time.time()
-    with _lock:
-        _jobs[job_id] = {
-            "job_id": job_id,
-            "operation": request.operation,
-            "status": "queued",
-            "created_at": now,
-            "updated_at": now,
-        }
-    _executor.submit(_run_job, job_id, request)
-    return {"job_id": job_id, "status": "queued"}
+def submit(operation, payload, request_id=None):
+    job_id, created = store.create(operation, payload, request_id)
+    if created:
+        executor = _speculation_executor if operation == 'speculate' else _executor
+        executor.submit(run_job, job_id)
+    return {'job_id': job_id, 'status': store.get(job_id)['status']}
 
 
-@router.get("/api/jobs/{job_id}")
-def job_status(job_id: str) -> Dict[str, Any]:
-    with _lock:
-        job = _jobs.get(job_id)
-        if not job:
-            raise HTTPException(status_code=404, detail="AI job was not found. Please retry.")
-        return dict(job)
+def resume_jobs():
+    for job_id in store.recover():
+        executor = _speculation_executor if store.get(job_id)['operation'] == 'speculate' else _executor
+        executor.submit(run_job, job_id)
+
+
+@router.post('/api/jobs', status_code=202)
+def create_job(request: AIJobRequest):
+    try:
+        payload = MODELS[request.operation].model_validate(request.payload).model_dump()
+        return submit(request.operation, payload, request.request_id)
+    except (ValidationError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get('/api/jobs/{job_id}')
+def job_status(job_id: str):
+    job = store.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail='Job was not found.')
+    return job

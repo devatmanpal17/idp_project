@@ -28,7 +28,11 @@ export const STUDY_EVENT_META: Record<
   StudyEvent["event_type"],
   { label: string; color: string; dot: string }
 > = {
-  review: { label: "Review reminder", color: "text-primary", dot: "bg-primary" },
+  review: {
+    label: "Review reminder",
+    color: "text-primary",
+    dot: "bg-primary",
+  },
   quiz: { label: "Quiz session", color: "text-accent", dot: "bg-accent" },
   study_block: { label: "Study block", color: "text-warn", dot: "bg-warn" },
 };
