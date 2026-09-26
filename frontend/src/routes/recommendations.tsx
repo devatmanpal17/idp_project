@@ -14,8 +14,16 @@ import {
   TrendingDown,
   Wand2,
 } from "lucide-react";
-import { recommendationsQuery, topicsQuery, coursesQuery } from "@/lib/chaigaram";
-import { EmptyState, Panel, MasteryPill } from "@/components/chaigaram/primitives";
+import {
+  recommendationsQuery,
+  topicsQuery,
+  coursesQuery,
+} from "@/lib/chaigaram";
+import {
+  EmptyState,
+  Panel,
+  MasteryPill,
+} from "@/components/chaigaram/primitives";
 import { QuizGenerator } from "@/components/chaigaram/QuizGenerator";
 
 export const Route = createFileRoute("/recommendations")({
@@ -24,7 +32,8 @@ export const Route = createFileRoute("/recommendations")({
       { title: "Recommendations | ChaiGaram" },
       {
         name: "description",
-        content: "AI-ranked smart recommendations and high-yield retrieval targets",
+        content:
+          "AI-ranked smart recommendations and high-yield retrieval targets",
       },
     ],
   }),
@@ -32,7 +41,11 @@ export const Route = createFileRoute("/recommendations")({
 });
 
 function RecommendationsScreen() {
-  const { data: recommendations = [], isLoading, error } = useQuery(recommendationsQuery);
+  const {
+    data: recommendations = [],
+    isLoading,
+    error,
+  } = useQuery(recommendationsQuery);
   const { data: topics = [] } = useQuery(topicsQuery);
   const { data: courses = [] } = useQuery(coursesQuery);
 
@@ -47,8 +60,8 @@ function RecommendationsScreen() {
             Smart Recommendations Engine
           </h1>
           <p className="text-xs text-muted-foreground">
-            Ranked by expected mastery lift · Identifying compounding prerequisite weaknesses before
-            advancing.
+            Ranked by expected mastery lift · Identifying compounding
+            prerequisite weaknesses before advancing.
           </p>
         </div>
       </div>
@@ -58,7 +71,9 @@ function RecommendationsScreen() {
         <Panel className="border-primary/50 bg-surface p-6 shadow-xl ring-1 ring-primary/20">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <span className="label-xs text-primary">RECOMMENDATION ACTION DRILL</span>
+              <span className="label-xs text-primary">
+                RECOMMENDATION ACTION DRILL
+              </span>
               <h2 className="font-display text-base font-bold text-foreground">
                 Targeted Remediation · {activeDrillTopic}
               </h2>
@@ -73,7 +88,10 @@ function RecommendationsScreen() {
 
           <QuizGenerator
             topicTitle={activeDrillTopic}
-            masteryScore={topics.find((t) => t.title === activeDrillTopic)?.mastery_score ?? 0}
+            masteryScore={
+              topics.find((t) => t.title === activeDrillTopic)?.mastery_score ??
+              0
+            }
           />
         </Panel>
       )}
@@ -81,11 +99,22 @@ function RecommendationsScreen() {
       {/* Recommendations Cards Grid */}
       <div className="space-y-5">
         {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/8 p-4 text-xs text-destructive">
-            {error instanceof Error ? error.message : "Recommendations could not be loaded."}
+          <div
+            role="alert"
+            className="rounded-lg border border-destructive/30 bg-destructive/8 p-4 text-xs text-destructive"
+          >
+            {error instanceof Error
+              ? error.message
+              : "Recommendations could not be loaded."}
           </div>
         )}
-        {isLoading && [0, 1, 2].map((item) => <div key={item} className="h-44 animate-pulse rounded-xl bg-surface" />)}
+        {isLoading &&
+          [0, 1, 2].map((item) => (
+            <div
+              key={item}
+              className="h-44 animate-pulse rounded-xl bg-surface"
+            />
+          ))}
         {!isLoading && !error && recommendations.length === 0 && (
           <Panel>
             <EmptyState
@@ -108,7 +137,9 @@ function RecommendationsScreen() {
             <Panel
               key={rec.id}
               className={`p-5 transition-all ${
-                isTopPriority ? "border-primary/50 shadow-md ring-1 ring-primary/20" : ""
+                isTopPriority
+                  ? "border-primary/50 shadow-md ring-1 ring-primary/20"
+                  : ""
               }`}
             >
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -127,17 +158,25 @@ function RecommendationsScreen() {
                     )}
                   </div>
 
-                  <h3 className="font-display text-base font-bold text-foreground">{topicTitle}</h3>
+                  <h3 className="font-display text-base font-bold text-foreground">
+                    {topicTitle}
+                  </h3>
                   <p className="text-xs text-muted-foreground">{courseTitle}</p>
                 </div>
 
                 <div className="flex items-center gap-4">
                   <div className="text-right">
-                    <span className="text-[10px] text-muted-foreground">IMPACT SCORE</span>
-                    <div className="num text-xl font-bold text-warn">{rec.impact_score}/100</div>
+                    <span className="text-[10px] text-muted-foreground">
+                      IMPACT SCORE
+                    </span>
+                    <div className="num text-xl font-bold text-warn">
+                      {rec.impact_score}/100
+                    </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-[10px] text-muted-foreground">ESTIMATED TIME</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      ESTIMATED TIME
+                    </span>
                     <div className="num flex items-center justify-end gap-1 text-sm font-semibold text-foreground">
                       <Clock className="h-3.5 w-3.5 text-muted-foreground" />{" "}
                       {rec.estimated_minutes}m
@@ -148,7 +187,9 @@ function RecommendationsScreen() {
 
               {/* Reasoning Box */}
               <div className="mt-4 rounded-md border border-border/80 bg-surface-2 p-3 text-xs leading-relaxed text-muted-foreground">
-                <span className="font-semibold text-foreground">AI Pedagogical Rationale:</span>{" "}
+                <span className="font-semibold text-foreground">
+                  AI Pedagogical Rationale:
+                </span>{" "}
                 {rec.reasoning}
               </div>
 

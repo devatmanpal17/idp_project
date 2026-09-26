@@ -19,7 +19,7 @@ async function sendToPage(type) {
     if (!/Receiving end does not exist|Could not establish connection/i.test(error?.message || "")) {
       throw error;
     }
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["observation.js", "content.js"] });
     return chrome.tabs.sendMessage(tab.id, { type });
   }
 }
@@ -55,9 +55,13 @@ document.getElementById("open").addEventListener("click", async () => {
 });
 
 document.getElementById("dashboard").addEventListener("click", async () => {
-  const settings = await chrome.storage.sync.get({ dashboardUrl: "http://localhost:8080" });
-  await chrome.tabs.create({ url: settings.dashboardUrl });
-  window.close();
+  try {
+    const settings = await chrome.storage.sync.get({ dashboardUrl: "http://localhost:8080" });
+    await chrome.tabs.create({ url: ChaiConnection.connectionURL(settings.dashboardUrl) });
+    window.close();
+  } catch (error) {
+    showStatus(error.message, 'offline');
+  }
 });
 
 document.getElementById("capturePage").addEventListener("click", async () => {

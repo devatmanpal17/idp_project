@@ -6,7 +6,7 @@ import time
 import re
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..models import (
     AskRequest,
@@ -30,8 +30,15 @@ from ml import (
 from ml.analytics import quiz_analytics
 from ml.llm_service import LLMConfigurationError
 from ml.rag_engine import RAGConfigurationError
+from ml.scheduler import controller
 
-router = APIRouter()
+
+def interactive_request():
+    with controller.interactive_work():
+        yield
+
+
+router = APIRouter(dependencies=[Depends(interactive_request)])
 
 
 def _require_source_words(text: str, source_type: str, minimum: int) -> None:
@@ -76,8 +83,12 @@ def ingest_document(req: IngestDocumentRequest) -> Dict[str, Any]:
 @router.post("/api/rag/ask")
 def ask_lesson(req: AskRequest) -> Dict[str, Any]:
     try:
-        active_document_id = None
-        if req.transcript_context:
+        active_document_id = req.document_id
+        if req.source_type == 'video':
+            if not active_document_id:
+                raise ValueError('Video questions require an observation-tracked document.')
+            rag_engine.vectors.document(active_document_id)
+        if req.transcript_context and req.source_type != 'video':
             _require_source_words(req.transcript_context, req.source_type, 8)
             indexed = rag_engine.ingest_transcript(
                 text=req.transcript_context,
@@ -115,6 +126,13 @@ def ask_lesson(req: AskRequest) -> Dict[str, Any]:
 @router.post("/api/rag/summarize")
 def summarize_page(req: SummarizeRequest) -> Dict[str, Any]:
     try:
+        if req.source_type == 'video':
+            if not req.document_id:
+                raise ValueError('Video summaries require an observation-tracked document.')
+            rag_engine.vectors.document(req.document_id)
+            chunks = rag_engine.retrieve('main ideas explanation summary', document_id=req.document_id, top_k=10)
+            return {'summary': llm_service.summarize_with_rag(req.topic, chunks),
+                    'active_provider': llm_service._last_provider_used, 'sources': chunks}
         _require_source_words(req.page_content, req.source_type, 20)
         indexed = rag_engine.ingest_document(
             text=req.page_content,
@@ -146,7 +164,7 @@ def summarize_page(req: SummarizeRequest) -> Dict[str, Any]:
 def retrieve_chunks(req: RetrieveRequest) -> Dict[str, Any]:
     start = time.perf_counter()
     try:
-        chunks = rag_engine.retrieve(req.query, topic=req.topic, top_k=req.top_k)
+        chunks = rag_engine.retrieve(req.query, topic=req.topic, top_k=req.top_k, document_id=req.document_id)
     except Exception as exc:
         raise _service_error(exc) from exc
     return {
@@ -164,8 +182,13 @@ def retrieve_chunks(req: RetrieveRequest) -> Dict[str, Any]:
 def generate_quiz(req: GenerateQuizRequest) -> Dict[str, Any]:
     start = time.perf_counter()
     try:
-        active_document_id = None
-        if req.source_context:
+        active_document_id = req.document_id
+        if req.source_type == 'video':
+            if not active_document_id:
+                _require_source_words(req.source_context or '', 'video', max(50, req.question_count * 15))
+                raise ValueError('Video quizzes require an observation-tracked document.')
+            rag_engine.vectors.document(active_document_id)
+        if req.source_context and req.source_type != 'video':
             _require_source_words(
                 req.source_context, req.source_type, max(50, req.question_count * 15)
             )
@@ -190,9 +213,12 @@ def generate_quiz(req: GenerateQuizRequest) -> Dict[str, Any]:
             raise ValueError(
                 f"No indexed lesson content exists for '{req.topic}'. Add source text first."
             )
+        if req.source_type == 'video':
+            _require_source_words(' '.join(chunk['snippet'] for chunk in chunks), 'video', max(50, req.question_count * 15))
         calibration = calibrate_difficulty(
             mastery_score=req.mastery_score,
             error_count=len(req.recent_errors or []),
+            question_count=req.question_count,
         )
         questions = llm_service.generate_quiz_with_rag(
             topic=req.topic,
@@ -250,7 +276,7 @@ def generate_quiz(req: GenerateQuizRequest) -> Dict[str, Any]:
         },
         {
             "step": "calibrate",
-            "label": "IRT difficulty calibration",
+            "label": "Heuristic difficulty selection",
             "detail": calibration["target_level"],
             "lines": [calibration["formula"], f"target success = {calibration['target_success_rate']}"],
         },
@@ -343,28 +369,4 @@ def evaluate_quiz(req: EvaluateQuizRequest) -> Dict[str, Any]:
 
 @router.post("/api/rag/stream-transcript")
 def stream_transcript(req: StreamTranscriptRequest) -> Dict[str, Any]:
-    try:
-        indexed = rag_engine.ingest_transcript(
-            req.transcript_segment,
-            req.current_topic,
-            req.video_title,
-            req.timestamp,
-            extra_metadata={
-                "page_url": req.page_url or "",
-                "dwell_seconds": req.dwell_seconds,
-                "video_position_seconds": req.video_position_seconds or 0,
-                "video_duration_seconds": req.video_duration_seconds or 0,
-            },
-        )
-    except Exception as exc:
-        raise _service_error(exc) from exc
-    word_count = len(req.transcript_segment.split())
-    comprehension_factor = min(1.0, req.dwell_seconds / max(1, word_count * 0.3))
-    return {
-        "video": req.video_title,
-        "timestamp": req.timestamp,
-        "words_captured": word_count,
-        "live_signal_delta": round((comprehension_factor - 0.5) * 2.0, 1),
-        "status": "indexed_to_chromadb",
-        **indexed,
-    }
+    raise HTTPException(status_code=422, detail='Legacy timestamp-only capture is disabled. Use /api/vectors/transcript and /api/observation/intervals.')

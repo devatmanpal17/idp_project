@@ -4,7 +4,7 @@ Generates mathematical chart payloads:
 1. Vector Cosine Similarity distribution across retrieved chunks
 2. Item Response Theory (IRT) Characteristic Curve: P(theta) = 1 / (1 + exp(-a * (theta - b)))
 3. Bloom's Taxonomy Cognitive Complexity radar/bar breakdown
-4. Bayesian Knowledge Tracing (BKT) Mastery Progression & Shift
+4. Fixed-rate assessment mastery comparison
 5. Concept Dependency Knowledge Graph
 """
 
@@ -28,7 +28,7 @@ def generate_similarity_distribution_chart(chunks: List[Dict[str, Any]]) -> List
 
 def generate_irt_curve(difficulty: float, mastery_score: float) -> List[Dict[str, Any]]:
     """
-    Item Response Theory (2PL) Characteristic Curve.
+    Illustrative 2PL curve with fixed, unestimated parameters.
     P(theta) = 1 / (1 + exp(-1.7 * a * (theta - b)))
     theta: learner ability (-3.0 to +3.0, mapped from mastery 0-100)
     b: item difficulty (-2.0 to +2.0, mapped from difficulty 0.0-1.0)

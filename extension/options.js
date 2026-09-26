@@ -22,16 +22,12 @@ document.getElementById("back").addEventListener("click", () => {
 });
 
 saveButton.addEventListener("click", async () => {
-  const apiBaseUrl = urlInput.value.trim().replace(/\/$/, "");
-  const dashboardUrl = dashboardInput.value.trim().replace(/\/$/, "");
-  if (!/^https?:\/\//.test(apiBaseUrl)) {
-    showResult("Enter a valid http:// or https:// backend URL.", "error");
-    urlInput.focus();
-    return;
-  }
-  if (!/^https?:\/\//.test(dashboardUrl)) {
-    showResult("Enter a valid http:// or https:// dashboard URL.", "error");
-    dashboardInput.focus();
+  let apiBaseUrl, dashboardUrl;
+  try {
+    apiBaseUrl = ChaiConnection.connectionURL(urlInput.value);
+    dashboardUrl = ChaiConnection.connectionURL(dashboardInput.value);
+  } catch (error) {
+    showResult(error.message, 'error');
     return;
   }
   saveButton.disabled = true;
@@ -40,7 +36,8 @@ saveButton.addEventListener("click", async () => {
     await chrome.storage.sync.set({ apiBaseUrl, dashboardUrl, autoCapture: autoInput.checked });
     const response = await chrome.runtime.sendMessage({ type: "HEALTH" });
     if (!response?.ok) throw new Error(response?.error || "Engine did not respond.");
-    showResult("Saved. Your private AI engine is online.", "success");
+    showResult(response.data.status === 'ready' ? "Saved. Your private AI engine is online." :
+      "Saved. The backend is online, but an Ollama model needs setup.", response.data.status === 'ready' ? 'success' : 'error');
   } catch (error) {
     showResult(`Saved, but the connection test failed: ${error.message}`, "error");
   } finally {

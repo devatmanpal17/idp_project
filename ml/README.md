@@ -7,7 +7,12 @@ The `ml/` folder contains the Machine Learning, RAG vector retrieval, LLM genera
 - **`rag_engine.py`**: Overlapping semantic chunking, Ollama embeddings, persistent ChromaDB indexing, metadata filtering, and raw cosine retrieval.
 - **`llm_service.py`**: Local Llama generation through Ollama with Pydantic JSON schemas and citation allow-list validation.
 - **`analytics.py`**: Server-side quiz sessions and persisted SQLite attempt/mastery history.
-- **`calibration.py`**: Learner signal difficulty calibrator and Bayesian mastery update algorithms.
+- **`calibration.py`**: Heuristic difficulty selection and fixed-rate assessment mastery updates.
+- **`selective_repair.py`**: Preserves validated quiz slots and repairs only invalid replacements.
+- **`recall.py`**: Assessment-success model with an explicit cold-start heuristic.
+- **`vector_cache.py`**: Expiring, bounded LRU cache for scoped ACTIVE retrieval results.
+- **`vector_state.py`**, **`temporal.py`**: Sealed embeddings, observation intervals, and recoverable promotion.
+- **`persistent_jobs.py`**, **`scheduler.py`**: Durable work and measured-cost speculative admission.
 
 ## Usage
 

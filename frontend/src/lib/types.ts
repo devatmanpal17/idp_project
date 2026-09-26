@@ -30,6 +30,12 @@ export type Topic = {
   last_updated: string;
   indexed_chunks?: number;
   assessed?: boolean;
+  recall?: {
+    method: "unassessed" | "cold_start_heuristic" | "fitted_assessment_model";
+    probability: number | null;
+    review_in_days: number;
+    curve: Array<{ day: number; retention: number; review: boolean }>;
+  };
 };
 
 export type QuizQuestion = {

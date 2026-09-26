@@ -1,0 +1,318 @@
+{
+  "checks": [
+    {
+      "name": "unpacked_extension_loaded",
+      "passed": true,
+      "details": "hcphlhcoalimgpcdipjadikpaobpgplm"
+    },
+    {
+      "name": "dashboard_document_ingestion",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "dashboard_quiz_generation_and_scoring",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "screen:/",
+      "passed": true,
+      "details": "The web teaches.\nChaiGaram makes it stick."
+    },
+    {
+      "name": "screen:/courses",
+      "passed": true,
+      "details": "Courses"
+    },
+    {
+      "name": "screen:/courses/course_641ae946861e9c08",
+      "passed": true,
+      "details": "Courses"
+    },
+    {
+      "name": "screen:/mastery",
+      "passed": true,
+      "details": "Topic Mastery & Decomposition"
+    },
+    {
+      "name": "screen:/study-plan",
+      "passed": true,
+      "details": "Spaced-Repetition Study Plan"
+    },
+    {
+      "name": "screen:/recommendations",
+      "passed": true,
+      "details": "Smart Recommendations Engine"
+    },
+    {
+      "name": "screen:/history",
+      "passed": true,
+      "details": "Visit history"
+    },
+    {
+      "name": "screen:/simulator",
+      "passed": true,
+      "details": "Browser Learning Extension"
+    },
+    {
+      "name": "screen:/profile",
+      "passed": true,
+      "details": "Make ChaiGaram yours"
+    },
+    {
+      "name": "screen:/settings",
+      "passed": true,
+      "details": "Local AI Settings"
+    },
+    {
+      "name": "settings_save_and_diagnostics",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "mobile_theme_toggle",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "mobile_navigation",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "study_calendar_export",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "extension_options_and_background_health",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "extension_article_summary",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "extension_article_question",
+      "passed": true,
+      "details": null
+    },
+    {
+      "name": "extension_real_video_seek_gap_stays_sealed",
+      "passed": true,
+      "details": {
+        "document_id": "92b49995e5719f5e0916162800f5c35f",
+        "observed_intervals": [
+          [
+            100,
+            2100
+          ],
+          [
+            8100,
+            10100
+          ]
+        ],
+        "contiguous_watermark_ms": 0,
+        "counts": {
+          "ACTIVE": 2,
+          "SEALED": 1
+        }
+      }
+    },
+    {
+      "name": "history_delete_from_ui",
+      "passed": true,
+      "details": null
+    }
+  ],
+  "runtime_errors": [],
+  "api_errors": [],
+  "live_quiz_skipped": false,
+  "ui_checks": [
+    {
+      "route": "/",
+      "viewport": "desktop",
+      "width": 1422,
+      "scrollWidth": 1407,
+      "brokenImages": 0
+    },
+    {
+      "route": "/courses",
+      "viewport": "desktop",
+      "width": 1422,
+      "scrollWidth": 1422,
+      "brokenImages": 0
+    },
+    {
+      "route": "/courses/course_641ae946861e9c08",
+      "viewport": "desktop",
+      "width": 1422,
+      "scrollWidth": 1422,
+      "brokenImages": 0
+    },
+    {
+      "route": "/mastery",
+      "viewport": "desktop",
+      "width": 1422,
+      "scrollWidth": 1407,
+      "brokenImages": 0
+    },
+    {
+      "route": "/study-plan",
+      "viewport": "desktop",
+      "width": 1422,
+      "scrollWidth": 1422,
+      "brokenImages": 0
+    },
+    {
+      "route": "/recommendations",
+      "viewport": "desktop",
+      "width": 1422,
+      "scrollWidth": 1422,
+      "brokenImages": 0
+    },
+    {
+      "route": "/history",
+      "viewport": "desktop",
+      "width": 1422,
+      "scrollWidth": 1422,
+      "brokenImages": 0
+    },
+    {
+      "route": "/simulator",
+      "viewport": "desktop",
+      "width": 1422,
+      "scrollWidth": 1422,
+      "brokenImages": 0
+    },
+    {
+      "route": "/profile",
+      "viewport": "desktop",
+      "width": 1422,
+      "scrollWidth": 1422,
+      "brokenImages": 0
+    },
+    {
+      "route": "/settings",
+      "viewport": "desktop",
+      "width": 1422,
+      "scrollWidth": 1422,
+      "brokenImages": 0
+    },
+    {
+      "route": "/",
+      "viewport": "mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "brokenImages": 0
+    },
+    {
+      "route": "/courses",
+      "viewport": "mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "brokenImages": 0
+    },
+    {
+      "route": "/courses/course_641ae946861e9c08",
+      "viewport": "mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "brokenImages": 0
+    },
+    {
+      "route": "/mastery",
+      "viewport": "mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "brokenImages": 0
+    },
+    {
+      "route": "/study-plan",
+      "viewport": "mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "brokenImages": 0
+    },
+    {
+      "route": "/recommendations",
+      "viewport": "mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "brokenImages": 0
+    },
+    {
+      "route": "/history",
+      "viewport": "mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "brokenImages": 0
+    },
+    {
+      "route": "/simulator",
+      "viewport": "mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "brokenImages": 0
+    },
+    {
+      "route": "/profile",
+      "viewport": "mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "brokenImages": 0
+    },
+    {
+      "route": "/settings",
+      "viewport": "mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "brokenImages": 0
+    }
+  ],
+  "video_observation_before_speculation": {
+    "document_id": "92b49995e5719f5e0916162800f5c35f",
+    "observed_intervals": [
+      [
+        100,
+        2100
+      ],
+      [
+        8100,
+        10100
+      ]
+    ],
+    "contiguous_watermark_ms": 0,
+    "counts": {
+      "ACTIVE": 2,
+      "UNEMBEDDED": 1
+    }
+  },
+  "video_retrieved_chunks": [
+    {
+      "chunk_id": "92b49995e5719f5e0916162800f5c35f_000002",
+      "topic": "Observation test",
+      "course": "Observation test",
+      "source": "http://127.0.0.1:8091/video.html",
+      "timestamp": "8.5",
+      "snippet": "Observed ending phrase about binary search.",
+      "similarity": 0.3563,
+      "distance": 0.6437,
+      "token_count": 6
+    },
+    {
+      "chunk_id": "92b49995e5719f5e0916162800f5c35f_000000",
+      "topic": "Observation test",
+      "course": "Observation test",
+      "source": "http://127.0.0.1:8091/video.html",
+      "timestamp": "0.5",
+      "snippet": "Observed opening phrase about sorted sequences.",
+      "similarity": 0.2978,
+      "distance": 0.7022,
+      "token_count": 6
+    }
+  ]
+}

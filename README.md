@@ -90,7 +90,7 @@ The extension's `content.js` runs on normal HTTP and HTTPS pages.
 
 For documents it locates the main article/content container and removes navigation, forms, sidebars, comments, recommendations, advertisements, scripts, and decorative content. It keeps useful headings, paragraphs, lists, code, quotations, and captions.
 
-For videos it collects captions from native text tracks, YouTube caption data, or visible caption elements. Only captions at or before the current playback position are used, so a quiz cannot use future video content.
+For videos it collects timestamped captions from native text tracks, YouTube caption data, or visible caption elements. Available tracks, including future captions, can be stored and embedded in a sealed SQL store. Only caption chunks fully covered by observed playback intervals are promoted to the searchable Chroma index; forward seeking does not unlock skipped content.
 
 Captured context is limited to 48,000 characters. Video quizzes require at least 50 caption words.
 
@@ -126,7 +126,9 @@ Quiz output must match a Pydantic JSON schema. The backend checks that:
 - questions are not duplicates
 - output is in English using Latin script
 
-Invalid output is retried up to three times and then rejected.
+Validated questions are retained. Only missing or invalid slots are regenerated,
+with at most three model calls before rejection. Evidence quotations must occur
+inside one cited chunk.
 
 ### 5. Evaluate and store quizzes
 
@@ -332,30 +334,37 @@ cd chaigaram
 python -m unittest discover -s tests -v
 ```
 
-Type-check and build the frontend:
+Run extension behavior checks:
+
+```powershell
+node --test tests/observation.test.cjs tests/extension_jobs.test.cjs tests/connection.test.cjs
+```
+
+Type-check, lint, and build the frontend:
 
 ```powershell
 cd chaigaram/frontend
 npx tsc --noEmit
+npm run lint
 npm run build
 ```
 
-Tests cover source isolation, minimum caption scope, grounded evidence quotations, English-only quiz output, history grouping and deletion, recommendations, and study-plan generation.
+Tests cover observation gating, restart recovery, grounded quiz validation and selective repair, history deletion, bounded cache invalidation, recall forecasts, recommendations, and the HTTP routes. For a disposable live model and Chrome run, see [feature verification](patent/03_FEATURE_VERIFICATION.md) and its reproduction commands in [architecture and security](patent/02_ARCHITECTURE_AND_SECURITY.md).
 
 ## Current limitations
 
 - FastAPI endpoints do not currently require authentication.
 - Learning data is global to one backend instance and is not separated by Firebase user ID.
-- CORS allows all origins and should be restricted before deployment.
-- Background AI jobs are stored in memory and disappear after a restart.
+- CORS defaults to local dashboard origins and Chrome extension origins. Configure `CORS_ORIGINS` for a different dashboard; CORS does not provide authentication.
+- Background AI jobs persist in SQL and resume after restart. Run one backend process: cross-process worker leases are not implemented. Interrupted model calls may repeat if their output was not yet checkpointed.
 - Study events are generated dynamically rather than persisted as editable tasks.
-- The calibration module describes an MCQ/short-answer mix, but the active generator creates MCQs only.
+- The active generator and its calibration metadata support MCQs only.
 - Difficulty currently uses mastery and recent errors; other signals are displayed but do not directly change difficulty.
 - Firebase protects profile documents only, not ChromaDB or quiz analytics.
 - `start_all.bat` does not verify or start Ollama.
 
 ## Privacy
 
-With the default configuration, lesson content, embeddings, and quiz analytics remain on the local machine. The extension sends only explicitly captured page text, selections, and visible or watched captions to the configured backend.
+With the default configuration, lesson content, embeddings, and quiz analytics remain on the local machine. The extension sends captured page text, selections, and available timestamped caption tracks to the configured backend. Tracks may include future captions; these remain outside the searchable index until the corresponding playback intervals have been observed.
 
 If the backend, ChromaDB, PostgreSQL, or Ollama URL is changed to a remote service, captured content will be sent to that service and should be protected with authentication and transport security.

@@ -1,0 +1,37 @@
+{
+  "kind": "synthetic-embedding microbenchmark; not real-model speedup evidence",
+  "trials_per_mode": 30,
+  "promotion": {
+    "ms": 86.51490000193007,
+    "embedding_calls": 0,
+    "sealed_results": 0
+  },
+  "metrics": {
+    "cache_invalidations": 34,
+    "cache_misses": 32,
+    "retrieval_ms": 479.35920000236365,
+    "cache_hits": 29,
+    "speculative_embeddings_total": 1,
+    "embedding_input_bytes": 39,
+    "speculative_embedding_ms": 11.190599998371908,
+    "promoted_vectors_total": 1,
+    "promotion_ms": 66.96130000273115
+  },
+  "cache": {
+    "entries": 0,
+    "resident_bytes": 0,
+    "max_bytes": 8388608,
+    "ttl_seconds": 300,
+    "accounting": "serialized keys and payloads; excludes runtime overhead"
+  },
+  "retrieval": {
+    "uncached": {
+      "median_ms": 15.320749998863903,
+      "embedding_calls": 30
+    },
+    "cached": {
+      "median_ms": 0.057750001360545866,
+      "embedding_calls": 1
+    }
+  }
+}

@@ -52,10 +52,10 @@
           <span class="section-icon">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5H5a2 2 0 0 0-2 2v3M16 5h3a2 2 0 0 1 2 2v3M8 19H5a2 2 0 0 1-2-2v-3M16 19h3a2 2 0 0 0 2-2v-3" /><path d="M8 12h8" /></svg>
           </span>
-          <span><h2 id="captureHeading">Learning capture</h2><p>Use what is currently visible so lessons and quizzes stay relevant.</p></span>
+          <span><h2 id="captureHeading">Learning capture</h2><p>Caption storage and access are controlled separately.</p></span>
         </div>
         <label class="switch-row" for="autoCapture">
-          <span><strong>Capture visible video captions</strong><small>Save only captions that have appeared up to the current playback position.</small></span>
+          <span><strong>Capture video caption tracks</strong><small>Store available captions; only observed playback intervals become searchable.</small></span>
           <input id="autoCapture" type="checkbox" />
           <span class="switch" aria-hidden="true"></span>
         </label>
@@ -69,6 +69,7 @@
         </button>
       </footer>
     </main>
+    <script src="connection.js"></script>
     <script src="options.js"></script>
   </body>
 </html>
