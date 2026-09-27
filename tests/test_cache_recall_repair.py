@@ -24,6 +24,20 @@ class CacheTests(unittest.TestCase):
         self.assertIsNone(cache.get('a'))
         self.assertEqual(cache.resident_bytes, 0)
 
+    def test_recall_priority_controls_admission_and_eviction(self):
+        cache = VectorCache(max_bytes=35, ttl_seconds=10, clock=lambda: 0)
+        self.assertTrue(cache.put('low', {'v': 'one'}, priority=.2))
+        self.assertTrue(cache.put('high', {'v': 'two'}, priority=.9))
+        # A well-recalled topic must not displace a topic more likely to need review.
+        self.assertFalse(cache.put('new', {'v': 'xxx'}, priority=.1))
+        self.assertIsNotNone(cache.get('low'))
+        self.assertIsNotNone(cache.get('high'))
+        self.assertTrue(cache.put('new', {'v': 'xxx'}, priority=.8))
+        self.assertIsNone(cache.get('low'))
+        self.assertIsNotNone(cache.get('high'))
+        self.assertIsNotNone(cache.get('new'))
+        self.assertLessEqual(cache.resident_bytes, 35)
+
 
 class RecallTests(unittest.TestCase):
     def test_cold_start_and_unassessed_forecast(self):
@@ -91,6 +105,21 @@ class SelectiveRepairTests(unittest.TestCase):
         result = service.generate_quiz_with_rag('Search', CHUNKS, 50, .5, 1)
         self.assertIn('C1', prompts[0])
         self.assertEqual(result[0]['citations'], ['E1'])
+
+    def test_quiz_schema_offers_verbatim_source_quotes(self):
+        question = copy.deepcopy(VALID['questions'][0])
+        question['citations'] = ['C1']
+        question['evidence_quote'] = CHUNKS[0]['snippet']
+        service = LLMService()
+        schemas = []
+        def chat(_system, _prompt, **kwargs):
+            schemas.append(kwargs['schema'])
+            return json.dumps({'questions': [question]})
+        service._chat = chat
+        result = service.generate_quiz_with_rag('Search', CHUNKS, 50, .5, 1)
+        options = schemas[0]['$defs']['QuizQuestion']['properties']['evidence_quote']['enum']
+        self.assertIn(CHUNKS[0]['snippet'], options)
+        self.assertEqual(result[0]['evidence_quote'], CHUNKS[0]['snippet'])
 
     def test_quote_cannot_be_assembled_across_two_citations(self):
         bad = copy.deepcopy(VALID)

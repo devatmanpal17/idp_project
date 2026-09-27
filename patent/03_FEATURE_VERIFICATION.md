@@ -1,9 +1,10 @@
-# Feature verification — 2026-09-23
+# Feature verification — 2026-09-27
 
 This report describes the working tree on `patent/observation-gated-vector-system`.
 The initial audit is in `00_IMPLEMENTATION_AUDIT.md`; the architecture, state
 transitions, threat boundary, and reproduction steps are in
-`02_ARCHITECTURE_AND_SECURITY.md`.
+`02_ARCHITECTURE_AND_SECURITY.md`. The phrase-by-phrase implementation map and
+prior-art references are in `04_PRIOR_ART_FEATURE_MATRIX.md`.
 
 ## Implemented feature scope
 
@@ -18,11 +19,15 @@ transitions, threat boundary, and reproduction steps are in
   future caption speculation. Deletion cancels linked work. An eligible sealed
   embedding can be promoted without another model embedding call.
 - Quiz generation validates each slot against its cited source and selectively
-  repairs failed slots. Public quiz responses omit answer keys; grading uses the
-  persisted server copy. Model answer formatting is normalized only when it
+  repairs failed slots. The prompt gives the local model exact quote choices
+  copied from source chunks; validation still checks the cited source. Public
+  quiz responses omit answer keys; grading uses the persisted server copy.
+  Model answer formatting is normalized only when it
   unambiguously selects an existing choice.
-- A bounded byte accounted TTL cache serves identical ACTIVE retrievals and is
-  cleared on vector mutations. Recall forecasts use prior assessment outcomes
+- Bounded byte accounted TTL caches serve identical ACTIVE retrievals and reuse
+  query embeddings across ACTIVE search scopes. They clear on vector or assessment
+  mutations. Lower predicted recall raises cache admission and retention priority;
+  LRU breaks ties. Recall forecasts use prior assessment outcomes
   after enough training pairs, otherwise a labelled cold start heuristic.
   Unassessed topics have no probability.
 - Diagnostics show state counts, job and cache counters, and recall training
@@ -32,7 +37,7 @@ transitions, threat boundary, and reproduction steps are in
 
 ## Automated results
 
-- Python: `python -m unittest discover -s tests -v` — 38 passed. This includes
+- Python: `python -m unittest discover -s tests -q` — 41 passed. This includes
   HTTP acceptance, real disposable SQLite and Chroma state, crash points,
   deletion, migration, cache and recall behavior, source validation, and jobs.
 - Extension: `node --test tests/observation.test.cjs tests/extension_jobs.test.cjs tests/connection.test.cjs`
@@ -43,7 +48,9 @@ transitions, threat boundary, and reproduction steps are in
   component modules.
 - JavaScript syntax and `git diff --check` passed. The Python test process also
   emitted a shutdown `ResourceWarning` for an unclosed SQLite connection after
-  its 38 passing tests; this is not counted as a test failure.
+  its 41 passing tests; this is not counted as a test failure. One concurrent
+  run timed out on a five-second background-job assertion under Chrome/model
+  load; the isolated rerun passed.
 - [Real local model run](results/live_models.json): embedding, retrieval,
   grounded answering, summarization, and quiz generation passed with
   `embeddinggemma` and `llama3.2:3b` on disposable data.
@@ -65,15 +72,19 @@ transitions, threat boundary, and reproduction steps are in
   was fixed by rendering a stable initial route placeholder; the final Chrome
   run captured no runtime exceptions.
 - Prompt-local citation labels map back to persistent chunk IDs before
-  validation. One earlier live rerun with a short 60-word lesson returned a
-  retryable 503 when `llama3.2:3b` exhausted three repair calls on duplicate
-  questions. The final fuller lesson passed, but the short-input model-quality
-  limit remains; quiz generation cannot be guaranteed for every source.
+  validation. A first live rerun failed after `llama3.2:3b` returned invalid
+  quotes or duplicate questions on three calls. After adding source-derived
+  quote choices, the [live rerun](results/live_models.json) and the dashboard's
+  three-question Chrome quiz passed. A short 60-word lesson had also produced
+  a retryable 503 in earlier testing. Stochastic model output can still fail;
+  the UI exposes retry instead of accepting ungrounded questions.
 - [Synthetic benchmark](results/benchmark.json), [raw trials](results/retrieval_trials.csv),
   and [chart](results/benchmark.png): 30 trials per retrieval mode. Median
-  uncached retrieval was 15.32 ms versus 0.058 ms cached; embedding calls were
-  30 versus 1. Promotion made zero embedding calls and a skipped SEALED chunk
-  stayed absent from results. These numbers isolate pipeline overhead using
+  retrieval was 2.41 ms with no caches, 3.14 ms with only the query-vector
+  cache, and 0.0064 ms with both caches; embedding calls were 30, 1, and 1.
+  The synthetic embedding cost is tiny, so the query-vector-only mode does not
+  demonstrate a latency improvement. Promotion made zero embedding calls and a
+  skipped SEALED chunk stayed absent from results. These numbers isolate pipeline overhead using
   deterministic synthetic embeddings. They are not real model throughput or a
   general speedup estimate.
 

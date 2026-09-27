@@ -344,6 +344,8 @@ def evaluate_quiz(req: EvaluateQuizRequest) -> Dict[str, Any]:
         question_count=len(questions),
         details=evaluations,
     )
+    # Assessment outcomes change recall-based cache admission priorities.
+    rag_engine.invalidate_cache()
     return {
         "attempt_id": attempt_id,
         "score": score,

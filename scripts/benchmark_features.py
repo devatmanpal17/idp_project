@@ -38,11 +38,15 @@ def main():
         rag = RAGEngine(root / 'chroma', state_engine=db, embeddings=embed)
         doc = rag.ingest_document('Binary search halves the interval of a sorted sequence.', 'Search', 'Benchmark')
         rows = []
-        for mode in ('uncached', 'cached'):
+        modes = ('no_caches', 'query_vector_only', 'both_caches')
+        for mode in modes:
             rag.hot_cache.clear()
+            rag.query_vector_cache.clear()
             for trial in range(30):
-                if mode == 'uncached':
+                if mode != 'both_caches':
                     rag.hot_cache.clear()
+                if mode == 'no_caches':
+                    rag.query_vector_cache.clear()
                 before = embed.calls
                 started = time.perf_counter()
                 result = rag.retrieve('binary search', document_id=doc['document_id'])
@@ -62,7 +66,7 @@ def main():
         summary = {'kind': 'synthetic-embedding microbenchmark; not real-model speedup evidence',
                    'trials_per_mode': 30, 'promotion': promotion, 'metrics': metrics.snapshot(),
                    'cache': rag.hot_cache.status(), 'retrieval': {}}
-        for mode in ('uncached', 'cached'):
+        for mode in modes:
             subset = [r for r in rows if r['mode'] == mode]
             summary['retrieval'][mode] = {'median_ms': statistics.median(r['ms'] for r in subset),
                                          'embedding_calls': sum(r['embedding_calls'] for r in subset)}
@@ -75,10 +79,12 @@ def main():
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
         figure, axes = plt.subplots(1, 2, figsize=(9, 3.5), layout='constrained')
-        modes = ['uncached', 'cached']
-        axes[0].bar(modes, [summary['retrieval'][m]['median_ms'] for m in modes], color=['#64748b', '#0d9488'])
+        labels = ['No caches', 'Query vector', 'Both caches']
+        axes[0].bar(labels, [summary['retrieval'][m]['median_ms'] for m in modes],
+                    color=['#64748b', '#2e749c', '#0d9488'])
         axes[0].set(ylabel='Median latency (ms)', title='30 repeated scoped queries')
-        axes[1].bar(modes, [summary['retrieval'][m]['embedding_calls'] for m in modes], color=['#64748b', '#0d9488'])
+        axes[1].bar(labels, [summary['retrieval'][m]['embedding_calls'] for m in modes],
+                    color=['#64748b', '#2e749c', '#0d9488'])
         axes[1].set(ylabel='Embedding calls', title='Calls across all 30 queries')
         figure.suptitle('Local microbenchmark — synthetic embeddings, real SQLite/Chroma')
         figure.savefig(args.output / 'benchmark.png', dpi=160)

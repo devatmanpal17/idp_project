@@ -10,7 +10,7 @@ The `ml/` folder contains the Machine Learning, RAG vector retrieval, LLM genera
 - **`calibration.py`**: Heuristic difficulty selection and fixed-rate assessment mastery updates.
 - **`selective_repair.py`**: Preserves validated quiz slots and repairs only invalid replacements.
 - **`recall.py`**: Assessment-success model with an explicit cold-start heuristic.
-- **`vector_cache.py`**: Expiring, bounded LRU cache for scoped ACTIVE retrieval results.
+- **`vector_cache.py`**: Expiring, byte-bounded caches for scoped ACTIVE retrieval results and query embeddings. Assessment recall sets admission and eviction priority; LRU breaks ties.
 - **`vector_state.py`**, **`temporal.py`**: Sealed embeddings, observation intervals, and recoverable promotion.
 - **`persistent_jobs.py`**, **`scheduler.py`**: Durable work and measured-cost speculative admission.
 

@@ -1,6 +1,7 @@
 """Real SQLite + Chroma integration; deterministic test embeddings, no model quality claims."""
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 from sqlalchemy import create_engine, text
@@ -129,11 +130,36 @@ class VectorPipelineTests(unittest.TestCase):
         self.assertEqual(self.embed.calls, calls)
         other = self.rag.retrieve('lantern', document_id=second['document_id'])
         self.assertNotEqual(one[0]['chunk_id'], other[0]['chunk_id'])
+        self.assertEqual(self.embed.calls, calls)  # Query vector reused across scopes.
         self.rag.delete_documents([first['document_id']])
         self.assertEqual(self.rag.retrieve('lantern', document_id=first['document_id']), [])
         self.assertNotIn('Zephyr', str(self.rag.retrieve('zephyr', document_id=self.doc)))
         self.observe([(5000, 6000)])
         self.assertIn('Zephyr', str(self.rag.retrieve('zephyr', document_id=self.doc)))
+
+    def test_assessed_recall_prioritizes_active_retrieval_cache(self):
+        timestamp = datetime.now(timezone.utc).isoformat()
+        attempts = [
+            {'topic': 'Weak', 'score': 20, 'completed_at': timestamp},
+            {'topic': 'Strong', 'score': 90, 'completed_at': timestamp},
+        ]
+        self.rag.analytics_store = type('Attempts', (), {'attempts': lambda self: attempts})()
+        weak = self.rag.ingest_document('Weak topic contains a copper lantern.', 'Weak', 'Notes')
+        strong = self.rag.ingest_document('Strong topic contains a silver compass.', 'Strong', 'Notes')
+        with patch.object(self.rag.hot_cache, 'put', wraps=self.rag.hot_cache.put) as put, \
+             patch.object(self.rag.query_vector_cache, 'put', wraps=self.rag.query_vector_cache.put) as vector_put:
+            self.rag.retrieve('lantern', document_id=weak['document_id'])
+            self.rag.retrieve('compass', document_id=strong['document_id'])
+        weak_priority = put.call_args_list[0].kwargs['priority']
+        strong_priority = put.call_args_list[1].kwargs['priority']
+        self.assertGreater(weak_priority, strong_priority)
+        self.assertGreater(vector_put.call_args_list[0].kwargs['priority'],
+                           vector_put.call_args_list[1].kwargs['priority'])
+        self.assertEqual(self.rag.hot_cache.status()['entries'], 2)
+        self.assertEqual(self.rag.query_vector_cache.status()['entries'], 2)
+        attempts[0]['score'] = 95
+        self.rag.invalidate_cache()
+        self.assertLess(self.rag._cache_priority('Weak'), weak_priority)
 
     def test_legacy_migration_requires_provenance_and_does_not_infer(self):
         legacy = self.rag.client.get_or_create_collection('legacy_documents', embedding_function=None)

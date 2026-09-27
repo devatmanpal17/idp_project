@@ -2,35 +2,40 @@
   "kind": "synthetic-embedding microbenchmark; not real-model speedup evidence",
   "trials_per_mode": 30,
   "promotion": {
-    "ms": 86.51490000193007,
+    "ms": 37.139100022614,
     "embedding_calls": 0,
     "sealed_results": 0
   },
   "metrics": {
-    "cache_invalidations": 34,
-    "cache_misses": 32,
-    "retrieval_ms": 479.35920000236365,
-    "cache_hits": 29,
+    "cache_invalidations": 100,
+    "cache_misses": 94,
+    "retrieval_ms": 194.30209998972714,
+    "cache_hits": 58,
     "speculative_embeddings_total": 1,
     "embedding_input_bytes": 39,
-    "speculative_embedding_ms": 11.190599998371908,
+    "speculative_embedding_ms": 5.92790002701804,
     "promoted_vectors_total": 1,
-    "promotion_ms": 66.96130000273115
+    "promotion_ms": 28.093299944885075
   },
   "cache": {
     "entries": 0,
     "resident_bytes": 0,
     "max_bytes": 8388608,
     "ttl_seconds": 300,
+    "admission": "lower_predicted_recall_first; LRU_on_ties",
     "accounting": "serialized keys and payloads; excludes runtime overhead"
   },
   "retrieval": {
-    "uncached": {
-      "median_ms": 15.320749998863903,
+    "no_caches": {
+      "median_ms": 2.4114999978337437,
       "embedding_calls": 30
     },
-    "cached": {
-      "median_ms": 0.057750001360545866,
+    "query_vector_only": {
+      "median_ms": 3.1364499882329255,
+      "embedding_calls": 1
+    },
+    "both_caches": {
+      "median_ms": 0.006400019628927112,
       "embedding_calls": 1
     }
   }

@@ -112,7 +112,8 @@ def _chunk_text(text: str, chunk_words: int = 220, overlap_words: int = 40) -> L
 class RAGEngine:
     """Persistent semantic index. Similarities are raw cosine scores from Chroma."""
 
-    def __init__(self, persist_directory: Optional[Path] = None, state_engine=None, embeddings=None) -> None:
+    def __init__(self, persist_directory: Optional[Path] = None, state_engine=None,
+                 embeddings=None, analytics_store=None) -> None:
         root = Path(__file__).resolve().parent.parent
         self.persist_directory = persist_directory or Path(
             os.getenv("CHROMA_PERSIST_DIR", str(root / "data" / "chroma"))
@@ -120,6 +121,8 @@ class RAGEngine:
         self._lock = RLock()
         from .vector_cache import VectorCache
         self.hot_cache = VectorCache(max_bytes=int(os.getenv('RAG_CACHE_BYTES', str(8 * 1024 * 1024))))
+        self.query_vector_cache = VectorCache(
+            max_bytes=int(os.getenv('RAG_QUERY_VECTOR_CACHE_BYTES', str(1024 * 1024))))
         self.embeddings = embeddings or OllamaEmbeddings()
         self.model_version = os.getenv("OLLAMA_EMBED_VERSION", self.embeddings.model)
         if embeddings is None:
@@ -151,6 +154,8 @@ class RAGEngine:
             embedding_function=None,
         )
         from .analytics import quiz_analytics
+        self.analytics_store = analytics_store if analytics_store is not None else quiz_analytics
+        self._cache_recall_model = None
         from .vector_state import VectorState
         from .persistent_jobs import JobStore
         engine = state_engine if state_engine is not None else quiz_analytics.engine
@@ -161,6 +166,19 @@ class RAGEngine:
     def invalidate_cache(self) -> None:
         if hasattr(self, 'hot_cache'):
             self.hot_cache.clear()
+            self.query_vector_cache.clear()
+            self._cache_recall_model = None
+
+    def _cache_priority(self, topic: Optional[str]) -> float:
+        """Use assessed recall as cache utility; unassessed topics stay neutral."""
+        if not topic:
+            return 0.5
+        if self._cache_recall_model is None:
+            from .recall import RecallModel
+            self._cache_recall_model = RecallModel(self.analytics_store.attempts())
+        forecast = self._cache_recall_model.forecast(topic)
+        probability = forecast['probability']
+        return 0.5 if probability is None else 1.0 - probability
 
     @property
     def count(self) -> int:
@@ -293,7 +311,9 @@ class RAGEngine:
                 return cached
             started = time.perf_counter()
             result = self._retrieve(query, topic, top_k, document_id, require_topic)
-            self.hot_cache.put(key, result)
+            result_topics = {item['topic'] for item in result}
+            cache_topic = topic or (next(iter(result_topics)) if len(result_topics) == 1 else None)
+            self.hot_cache.put(key, result, priority=self._cache_priority(cache_topic))
             metrics.add('retrieval_ms', (time.perf_counter() - started) * 1000)
             return result
 
@@ -305,20 +325,20 @@ class RAGEngine:
             return []
         if require_topic and topic and not self._topic_exists(topic):
             return []
-        query_text = _normalise(f"{topic or ''} {query}")
-        if not query_text:
-            raise ValueError("A query or topic is required.")
-        query_vector = self.embeddings.embed([query_text])[0]
         requested = min(max(top_k, 1), self.count)
         kwargs: Dict[str, Any] = {
-            "query_embeddings": [query_vector],
             "n_results": requested,
             "include": ["documents", "metadatas", "distances"],
         }
+        cache_topic = topic
         if document_id:
-            document_records = self.collection.get(where={"document_id": document_id}, include=[])
+            document_records = self.collection.get(where={"document_id": document_id}, include=['metadatas'])
             if not document_records.get("ids"):
                 return []
+            document_topics = {str(meta.get('topic')) for meta in (document_records.get('metadatas') or [])
+                               if meta and meta.get('topic')}
+            if not cache_topic and len(document_topics) == 1:
+                cache_topic = next(iter(document_topics))
             kwargs["where"] = {"document_id": document_id}
             kwargs["n_results"] = min(requested, len(document_records.get("ids", [])))
         elif topic:
@@ -327,6 +347,16 @@ class RAGEngine:
             topic_records = self.collection.get(where={"topic": topic}, include=[])
             kwargs["where"] = {"topic": topic}
             kwargs["n_results"] = min(requested, len(topic_records.get("ids", [])))
+        query_text = _normalise(f"{topic or ''} {query}")
+        if not query_text:
+            raise ValueError("A query or topic is required.")
+        vector_key = json.dumps([self.model_version, query_text])
+        query_vector = self.query_vector_cache.get(vector_key)
+        if query_vector is None:
+            query_vector = self.embeddings.embed([query_text])[0]
+            self.query_vector_cache.put(vector_key, query_vector,
+                                        priority=self._cache_priority(cache_topic))
+        kwargs['query_embeddings'] = [query_vector]
         result = self.collection.query(**kwargs)
         ids = (result.get("ids") or [[]])[0]
         docs = (result.get("documents") or [[]])[0]
@@ -394,6 +424,7 @@ class RAGEngine:
             "topics_indexed": self.topics(),
             "embedding_service": self.embeddings.health(),
             "cache": self.hot_cache.status(),
+            "query_vector_cache": self.query_vector_cache.status(),
         }
 
 

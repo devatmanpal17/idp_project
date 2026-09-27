@@ -349,7 +349,7 @@ npm run lint
 npm run build
 ```
 
-Tests cover observation gating, restart recovery, grounded quiz validation and selective repair, history deletion, bounded cache invalidation, recall forecasts, recommendations, and the HTTP routes. For a disposable live model and Chrome run, see [feature verification](patent/03_FEATURE_VERIFICATION.md) and its reproduction commands in [architecture and security](patent/02_ARCHITECTURE_AND_SECURITY.md).
+Tests cover observation gating, restart recovery, grounded quiz validation and selective repair, history deletion, recall-prioritized byte-bounded result and query-vector caches, recall forecasts, recommendations, and the HTTP routes. For a disposable live model and Chrome run, see [feature verification](patent/03_FEATURE_VERIFICATION.md) and its reproduction commands in [architecture and security](patent/02_ARCHITECTURE_AND_SECURITY.md). The [feature matrix](patent/04_PRIOR_ART_FEATURE_MATRIX.md) maps the patent comparison language to implementation and tests.
 
 ## Current limitations
 

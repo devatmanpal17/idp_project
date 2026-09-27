@@ -111,7 +111,7 @@
             2100
           ],
           [
-            8100,
+            8000,
             10100
           ]
         ],
@@ -281,14 +281,14 @@
         2100
       ],
       [
-        8100,
+        8000,
         10100
       ]
     ],
     "contiguous_watermark_ms": 0,
     "counts": {
       "ACTIVE": 2,
-      "UNEMBEDDED": 1
+      "SEALED": 1
     }
   },
   "video_retrieved_chunks": [

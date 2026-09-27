@@ -13,6 +13,11 @@ type Diagnostics = {
     contiguous_watermark_ms: number;
   }>;
   cache: { entries: number; resident_bytes: number; max_bytes: number };
+  query_vector_cache?: {
+    entries: number;
+    resident_bytes: number;
+    max_bytes: number;
+  };
   scheduler: {
     batch_size?: number;
     reason?: string;
@@ -201,6 +206,13 @@ function SettingsScreen() {
               Cache hits: {diagnostics.metrics["cache_hits"] ?? 0}. Embedding
               batches: {diagnostics.scheduler.batch_size ?? 0}. Scheduler:{" "}
               {diagnostics.scheduler.reason ?? "waiting for capture"}.
+            </p>
+            <p className="text-muted-foreground">
+              The bounded retrieval cache gives priority to assessed topics with
+              lower predicted recall; unassessed topics have neutral priority.
+              Lower-priority admissions declined:{" "}
+              {diagnostics.metrics["cache_priority_rejections"] ?? 0}. Cached
+              query vectors: {diagnostics.query_vector_cache?.entries ?? 0}.
             </p>
             {diagnostics.documents.length > 0 && (
               <div className="overflow-x-auto">

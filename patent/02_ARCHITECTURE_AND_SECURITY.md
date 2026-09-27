@@ -15,6 +15,7 @@ flowchart LR
     Validate -->|Invalid slots only| Tutor
     Validate --> Quiz[(SQL quiz keys and assessments)]
     Quiz --> Recall[Recall estimate and suggested reviews]
+    Recall -->|Lower predicted recall raises admission priority| Cache
     API --> Dashboard[Dashboard and diagnostics]
 ```
 
@@ -63,10 +64,17 @@ side effect of a handler already executing.
 
 ## Cache and legacy migration
 
-Cache keys include model version, query, topic, document ID, result count, and
-topic-scope policy. Only ACTIVE retrieval results are cached, with defensive
-copies on read. Entries expire after five minutes and use LRU eviction.
-`RAG_CACHE_BYTES` bounds serialized keys and payloads, not total process RSS.
+Retrieval-result cache keys include model version, query, topic, document ID,
+result count, and topic-scope policy. Query embeddings have a separate byte-bounded
+cache keyed by model version and normalized query text; they can be reused across
+different ACTIVE search scopes. Only ACTIVE retrieval results are cached, with
+defensive copies on read. Entries expire after five minutes. Admission and eviction use
+the latest assessed topic recall: lower predicted recall has higher priority,
+with LRU breaking equal-priority ties. Unassessed or mixed-topic results use a
+neutral priority. Assessment or vector mutations invalidate the cache, and the
+recall model is rebuilt on the next scoped retrieval.
+`RAG_CACHE_BYTES` and `RAG_QUERY_VECTOR_CACHE_BYTES` bound serialized keys and
+payloads of their respective caches, not total process RSS.
 
 `POST /api/vectors/migrate` previews migration by default. Only records explicitly
 marked `source_type=document` with an exact compatible `model_version` can be
@@ -76,7 +84,9 @@ are made. Re-ingest sources whose original model cannot be verified.
 
 ## Assessments and recall
 
-Selective repair preserves accepted slots and requests only replacements. Each
+Selective repair preserves accepted slots and requests only replacements. The
+quiz prompt offers source-derived, verbatim quote choices to the local model;
+validation still requires a quote inside its cited ACTIVE chunk. Each
 accepted question passes schema, four-choice, answer-match, language, citation,
 exact-quote, evidence-overlap, and duplicate checks. Quotes must occur inside one
 cited chunk. A quiz fails closed after three attempts. Answers remain server-side

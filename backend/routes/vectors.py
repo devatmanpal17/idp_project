@@ -50,7 +50,8 @@ def diagnostics():
     return {'documents': rag_engine.vectors.diagnostics(), 'metrics': metrics.snapshot(),
             'active_vectors': rag_engine.count, 'model_version': rag_engine.model_version,
             'jobs': store.diagnostics(), 'scheduler': getattr(controller, 'last_decision', {}),
-            'cache': rag_engine.hot_cache.status()}
+            'cache': rag_engine.hot_cache.status(),
+            'query_vector_cache': rag_engine.query_vector_cache.status()}
 
 
 @router.delete('/api/vectors/documents/{document_id}')
@@ -87,9 +88,12 @@ def speculate(req: SpeculationRequest):
     from ml.scheduler import controller
     try:
         pending = rag_engine.vectors.pending(req.document_id)
+        cache_usage = [getattr(getattr(rag_engine, name, None), 'resident_bytes', 0)
+                       for name in ('hot_cache', 'query_vector_cache')]
         decision = controller.decide(budget_ms=req.budget_ms, idle=req.idle,
                                      queue_depth=store.queue_depth(),
-                                     occupancy=getattr(getattr(rag_engine, 'hot_cache', None), 'resident_bytes', 0))
+                                     occupancy=sum(value for value in cache_usage
+                                                   if isinstance(value, (int, float))))
         # Prefer already observed chunks; future work stays within the horizon.
         intervals = rag_engine.vectors.intervals(req.document_id)
         from ml.temporal import covered
