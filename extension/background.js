@@ -58,6 +58,15 @@ const handlers = {
     method: "POST",
     body: JSON.stringify(payload),
   }),
+  ABANDON: (payload) => apiRequest(`/api/rag/abandon-quiz/${encodeURIComponent(payload.quiz_id)}`, {
+    method: "POST",
+  }),
+  PLAYER_STATE: payload => apiRequest('/api/runtime/player-state', {
+    method: 'POST', body: JSON.stringify(payload),
+  }),
+  F1_SEAL: payload => apiRequest('/api/f1/seal', {method:'POST',body:JSON.stringify(payload)}),
+  F1_INTERVALS: payload => apiRequest('/api/f1/intervals', {method:'POST',body:JSON.stringify(payload)}),
+  F1_STATUS: () => apiRequest('/api/f1/status'),
   TOPIC_STATE: (payload) => apiRequest(`/api/learning/topic-state?topic=${encodeURIComponent(payload.topic)}`),
   JOB_START: (payload) => apiRequest("/api/jobs", {
     method: "POST",

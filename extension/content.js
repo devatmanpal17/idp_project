@@ -41,6 +41,8 @@
     mediaSession: crypto.randomUUID(),
     sequence: 0,
     mediaSignature: '',
+    scopedSequence: 0,
+    scopedEnabled: null,
     syncPromise: null,
     visibleCue: null,
     officialLoaded: false,
@@ -48,6 +50,57 @@
   let host;
   let shadow;
   let captureTimer;
+  let playerStateCleanup = null;
+  let playerStateTimer = null;
+  let learnerKeyPromise = null;
+
+  function learnerKey() {
+    if (!learnerKeyPromise) learnerKeyPromise = chrome.storage.local.get('chaigaram-learner-key').then(async result => {
+      let key = result['chaigaram-learner-key'];
+      if (!key) {
+        key = crypto.randomUUID();
+        await chrome.storage.local.set({'chaigaram-learner-key': key});
+      }
+      return key;
+    });
+    return learnerKeyPromise;
+  }
+
+  function schedulePlayerState(video) {
+    clearTimeout(playerStateTimer);
+    playerStateTimer = setTimeout(async () => {
+      if (video !== state.trackedVideo) return;
+      const playerState = document.hidden ? 'HIDDEN' : video.ended ? 'ENDED'
+        : video.seeking ? 'SEEKING' : video.paused ? 'PAUSED' : 'PLAYING';
+      const id = youtubeVideoId();
+      if (!id) return;
+      try {
+        await send('PLAYER_STATE', {learner_key: await learnerKey(), video_key: `youtube:${id}`,
+          state: playerState, media_time: video.currentTime, ts: Date.now()});
+      } catch (_) { /* The local runtime may be offline. */ }
+    }, 250);
+  }
+
+  function attachPlayerState(video) {
+    playerStateCleanup?.();
+    const events = ['play','playing','pause','seeking','seeked','ratechange','waiting','ended'];
+    const update = event => {
+      schedulePlayerState(video);
+      if (['pause', 'ended', 'pagehide'].includes(event?.type) || document.hidden) {
+        if (state.mediaCaptions.length) void syncMedia().catch(() => {});
+      }
+    };
+    events.forEach(event => video.addEventListener?.(event, update));
+    document.addEventListener?.('visibilitychange', update);
+    globalThis.addEventListener?.('pagehide', update);
+    playerStateCleanup = () => {
+      events.forEach(event => video.removeEventListener?.(event, update));
+      document.removeEventListener?.('visibilitychange', update);
+      globalThis.removeEventListener?.('pagehide', update);
+      clearTimeout(playerStateTimer);
+    };
+    update();
+  }
 
   const send = (type, payload) => new Promise((resolve, reject) => {
     chrome.runtime.sendMessage({ type, payload }, (response) => {
@@ -136,11 +189,13 @@
     const nextKey = currentPageKey();
     if (nextKey === state.pageKey) return;
     state.observation?.detach();
+    playerStateCleanup?.(); playerStateCleanup = null;
     state.observation = null; state.trackedVideo = null;
     state.mediaElementSource = '';
     state.mediaCaptions = []; state.documentId = null;
     state.mediaSession = crypto.randomUUID(); state.sequence = 0;
     state.mediaSignature = ''; state.visibleCue = null; state.officialLoaded = false;
+    state.scopedSequence = 0;
     state.pageKey = nextKey;
     state.transcript = [];
     state.lastCaption = "";
@@ -318,12 +373,14 @@
     if (state.trackedVideo) {
       state.mediaCaptions = []; state.documentId = null; state.mediaSignature = '';
       state.mediaSession = crypto.randomUUID(); state.sequence = 0;
+      state.scopedSequence = 0;
       state.visibleCue = null; state.officialLoaded = false; state.lastCaption = '';
     }
     state.observation?.detach();
     state.trackedVideo = video;
     state.mediaElementSource = source;
     state.observation = ChaiObservation.attach(video, { allowed: () => !playerIsShowingAd() });
+    attachPlayerState(video);
   }
 
   async function syncMedia(interactive = false) {
@@ -338,6 +395,35 @@
     const sync = async () => {
       const captions = state.mediaCaptions.slice(0, 20000);
       const signature = JSON.stringify(captions);
+      const videoId = youtubeVideoId();
+      if (videoId && state.scopedEnabled === null) {
+        try { state.scopedEnabled = Boolean((await send('F1_STATUS')).enabled); }
+        catch (_) { state.scopedEnabled = false; }
+      }
+      if (videoId && state.scopedEnabled) {
+        const key = await learnerKey();
+        const videoKey = `youtube:${videoId}`;
+        if (signature !== state.mediaSignature) {
+          await send('F1_SEAL', {learner_key: key, video_key: videoKey,
+            cues: captions.map(cue => ({start: cue.start_ms / 1000, end: cue.end_ms / 1000, text: cue.text})),
+            duration: Number.isFinite(video.duration) && video.duration > 0
+              ? video.duration : Math.max(...captions.map(cue => cue.end_ms)) / 1000});
+          if (!stillCurrent()) return;
+          state.mediaSignature = signature;
+        }
+        const pending = observation.tracker.pending.splice(0);
+        if (pending.length) {
+          try {
+            await send('F1_INTERVALS', {learner_key: key, video_key: videoKey,
+              batch_seq: ++state.scopedSequence, intervals: pending});
+          } catch (error) {
+            observation.tracker.pending.unshift(...pending);
+            state.scopedSequence -= 1;
+            throw error;
+          }
+        }
+        return;
+      }
       if (signature !== state.mediaSignature) {
         const result = await send('TRANSCRIPT', { source_url: pageKey, topic: topic(), captions });
         if (!stillCurrent()) return;
@@ -718,6 +804,8 @@
         transcript_context: context.kind === "video" ? null : context.text,
         source_type: context.kind,
         document_id: context.kind === "video" ? context.documentId : null,
+        learner_key: context.kind === 'video' && youtubeVideoId() && state.scopedEnabled ? await learnerKey() : null,
+        video_key: context.kind === 'video' && youtubeVideoId() && state.scopedEnabled ? `youtube:${youtubeVideoId()}` : null,
         observed_until_seconds: context.observedUntilSeconds,
         top_k: 5,
       });
@@ -771,6 +859,8 @@
         page_url: location.href,
         source_type: context.kind,
         document_id: context.kind === "video" ? context.documentId : null,
+        learner_key: context.kind === 'video' && youtubeVideoId() && state.scopedEnabled ? await learnerKey() : null,
+        video_key: context.kind === 'video' && youtubeVideoId() && state.scopedEnabled ? `youtube:${youtubeVideoId()}` : null,
         observed_until_seconds: context.observedUntilSeconds,
       });
       if (requestPageKey !== state.pageKey) return;
@@ -789,6 +879,9 @@
   }
 
   async function generateQuiz() {
+    if (state.quizId) {
+      try { await send('ABANDON', { quiz_id: state.quizId }); } catch (_) { /* expiry remains a backstop */ }
+    }
     const button = shadow.getElementById("generate");
     button.disabled = true;
     button.textContent = "Writing your questions…";
@@ -810,6 +903,8 @@
         language: "English",
         source_type: context.kind,
         document_id: context.kind === "video" ? context.documentId : null,
+        learner_key: context.kind === 'video' && youtubeVideoId() && state.scopedEnabled ? await learnerKey() : null,
+        video_key: context.kind === 'video' && youtubeVideoId() && state.scopedEnabled ? `youtube:${youtubeVideoId()}` : null,
         observed_until_seconds: context.observedUntilSeconds,
         mastery_score: state.mastery,
         quiz_perf_pct: state.quizPerf,

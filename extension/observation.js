@@ -1,7 +1,7 @@
 /* Pure interval tracker plus HTMLVideoElement adapter. No timestamp watermark proof. */
 (() => {
   class ObservationTracker {
-    constructor() { this.intervals = []; this.previous = null; }
+    constructor() { this.intervals = []; this.pending = []; this.previous = null; }
     breakTraversal() { this.previous = null; }
     sample(mediaMs, wallMs, rate = 1, eligible = true) {
       if (![mediaMs, wallMs, rate].every(Number.isFinite) || rate <= 0 || !eligible) {
@@ -16,6 +16,8 @@
       if (elapsed <= 0 || elapsed > 1000 || delta <= 0 || last.rate !== rate ||
           delta > elapsed * rate + 50) return;
       this.add(Math.ceil(last.mediaMs), Math.floor(mediaMs));
+      this.pending.push({start: last.mediaMs / 1000, end: mediaMs / 1000,
+        wall_ms: elapsed, rate});
     }
     add(start, end) {
       if (end <= start) return;

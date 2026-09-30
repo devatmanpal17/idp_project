@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 
 def main():
     results = {'kind': 'real local Ollama smoke test', 'checks': []}
-    output = ROOT / 'patent/results/live_models.json'
+    output = Path(os.getenv('CHAI_LIVE_CHECK_OUTPUT', str(ROOT / 'patent/results/live_models.json')))
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
         root = Path(directory)

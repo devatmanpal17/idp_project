@@ -23,6 +23,8 @@ class ChatTurn(BaseModel):
 
 
 class AskRequest(RequestModel):
+    learner_key: Optional[str] = Field(default=None, max_length=100)
+    video_key: Optional[str] = Field(default=None, max_length=200)
     document_id: Optional[str] = Field(default=None, max_length=64)
     question: str = Field(..., min_length=2, max_length=2000)
     topic: Optional[str] = Field(default=None, max_length=300)
@@ -34,6 +36,8 @@ class AskRequest(RequestModel):
 
 
 class SummarizeRequest(RequestModel):
+    learner_key: Optional[str] = Field(default=None, max_length=100)
+    video_key: Optional[str] = Field(default=None, max_length=200)
     document_id: Optional[str] = Field(default=None, max_length=64)
     topic: str = Field(..., min_length=2, max_length=300)
     page_content: str = Field(default="", max_length=50000)
@@ -43,6 +47,8 @@ class SummarizeRequest(RequestModel):
 
 
 class GenerateQuizRequest(RequestModel):
+    learner_key: Optional[str] = Field(default=None, max_length=100)
+    video_key: Optional[str] = Field(default=None, max_length=200)
     document_id: Optional[str] = Field(default=None, max_length=64)
     topic: str = Field(..., description="Target topic name")
     mastery_score: float = Field(default=0.0, ge=0, le=100, description="Persisted current mastery score (0-100)")

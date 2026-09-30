@@ -178,6 +178,8 @@ class VectorState:
                 with self.engine.begin() as db:
                     db.execute(text("UPDATE temporal_chunks SET state='ACTIVE',activated_at=:now WHERE id=:id"),
                                {'id': row['id'], 'now': now()})
+                if hasattr(self.rag, 'answer_cache'):
+                    self.rag.answer_cache.insert(document_id, [json.loads(row['vector_json'])])
                 self.rag.invalidate_cache()
                 metrics.add('promoted_vectors_total')
                 metrics.add('promotion_ms', (time.perf_counter() - started) * 1000)
@@ -193,6 +195,8 @@ class VectorState:
                 with self.engine.begin() as db:
                     db.execute(text("UPDATE media_documents SET state='DELETING' WHERE id=:id"), {'id': document_id})
                 entries = self.rag.collection.get(where={'document_id': document_id}, include=[])
+                if hasattr(self.rag, 'answer_cache'):
+                    self.rag.answer_cache.bump_epoch(document_id)
                 if entries['ids']:
                     self.rag.collection.delete(ids=entries['ids'])
                     removed += len(entries['ids'])

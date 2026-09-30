@@ -54,6 +54,66 @@ class VectorPipelineTests(unittest.TestCase):
         self.rag.vectors.promote(self.doc)
         self.assertEqual(self.rag.count, 2)
 
+    def test_quiz_evidence_lease_hides_and_restores_without_inference(self):
+        self.observe([(0, 1000), (5000, 6000)])
+        with self.db.connect() as db:
+            secret = db.execute(text("SELECT id FROM temporal_chunks WHERE document_id=:doc AND start_ms=5000"),
+                                {'doc': self.doc}).scalar_one()
+            original = db.execute(text('SELECT vector_json FROM temporal_chunks WHERE id=:id'),
+                                  {'id': secret}).scalar_one()
+        first = self.rag.leases.open('quiz-one', self.doc, [{'citations': [secret]}])
+        second = self.rag.leases.open('quiz-two', self.doc, [{'citations': [secret]}])
+        self.assertNotIn(secret, [r['chunk_id'] for r in self.rag.retrieve('zephyr', document_id=self.doc)])
+        before = self.embed.calls
+        self.rag.vectors.promote(self.doc)
+        self.assertNotIn(secret, self.rag.collection.get(include=[])['ids'])
+        self.assertEqual(self.rag.leases.close('quiz-one'), 0)
+        self.assertNotIn(secret, self.rag.collection.get(include=[])['ids'])
+        self.rag.leases.recover()
+        self.assertEqual(self.rag.leases.close('quiz-two'), 1)
+        self.assertEqual(self.rag.leases.close('quiz-two'), 0)
+        self.assertIn(secret, self.rag.collection.get(include=[])['ids'])
+        with self.db.connect() as db:
+            self.assertEqual(db.execute(text('SELECT vector_json FROM temporal_chunks WHERE id=:id'),
+                                        {'id': secret}).scalar_one(), original)
+        self.assertEqual(self.embed.calls, before)
+
+    def test_expired_lease_and_interrupted_restore_reconcile(self):
+        self.observe([(0, 1000), (5000, 6000)])
+        with self.db.connect() as db:
+            secret = db.execute(text('SELECT id FROM temporal_chunks WHERE document_id=:doc AND start_ms=5000'),
+                                {'doc': self.doc}).scalar_one()
+        self.rag.leases.open('expiring-quiz', self.doc, [{'citations': [secret]}])
+        with self.db.begin() as db:
+            db.execute(text("UPDATE evidence_leases SET expires_at='2000-01-01T00:00:00+00:00'"))
+        self.assertEqual(self.rag.leases.expire(), 1)
+        self.assertIn(secret, self.rag.collection.get(include=[])['ids'])
+        self.rag.collection.delete(ids=[secret])  # simulate crash after SQL commit
+        before = self.embed.calls
+        self.rag.leases.recover()
+        self.assertIn(secret, self.rag.collection.get(include=[])['ids'])
+        self.assertEqual(self.embed.calls, before)
+
+    def test_answer_cache_keeps_unaffected_top_one_and_invalidates_removed_evidence(self):
+        self.observe([(0, 1000)])
+        request = AskRequest(question='ordinary lesson?', source_type='video', document_id=self.doc,
+                             topic='Test', top_k=1)
+        with patch.object(routes, 'rag_engine', self.rag), patch.object(
+            routes.llm_service, 'answer_with_rag', return_value='First answer') as answer:
+            initial = routes.ask_lesson(request)
+            self.assertEqual(routes.ask_lesson(request), initial)
+            self.assertEqual(answer.call_count, 1)
+            before = self.embed.calls
+            self.observe([(5000, 6000)], 2)
+            self.assertEqual(routes.ask_lesson(request), initial)
+            self.assertEqual(answer.call_count, 1)
+            self.assertEqual(self.embed.calls, before)
+            with self.db.connect() as db:
+                first = db.execute(text('SELECT id FROM temporal_chunks WHERE document_id=:doc AND start_ms=0'),
+                                   {'doc': self.doc}).scalar_one()
+            self.rag.leases.open('cache-quiz', self.doc, [{'citations': [first]}])
+            self.assertEqual(self.rag.answer_cache.status()['entries'], 0)
+
     def test_crash_after_upsert_recovers_without_inference_or_duplicates(self):
         def fail(stage):
             if stage == 'after_upsert': raise RuntimeError('injected crash')

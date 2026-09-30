@@ -13,7 +13,7 @@ const source = fs.readFileSync(require.resolve('../extension/content.js'), 'utf8
 function browser(handler, storage = {}) {
   const video = { paused: true, readyState: 4, currentTime: 10 };
   const context = vm.createContext({
-    URL, crypto: { randomUUID }, setTimeout: fn => fn(),
+    URL, crypto: { randomUUID }, setTimeout: fn => fn(), clearTimeout: () => {},
     ChaiObservation: { attach: () => ({ detach() {}, evidence: 'rendered-frame', tracker: { intervals: [] } }) },
     location: { href: 'https://example.test/lesson', hostname: 'example.test' },
     document: {

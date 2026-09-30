@@ -34,11 +34,20 @@ from .routes.settings import router as settings_router
 from .routes.learning_data import router as learning_data_router
 from .routes.jobs import router as jobs_router, resume_jobs
 from .routes.vectors import router as vectors_router
+from .routes.runtime import router as runtime_router
 
 @asynccontextmanager
 async def lifespan(app):
+    from ml.residency import start_residency_worker
+    from ml import rag_engine
+    residency_stop = start_residency_worker()
+    lease_stop = rag_engine.leases.start_sweeper()
     resume_jobs()
-    yield
+    try:
+        yield
+    finally:
+        residency_stop.set()
+        lease_stop.set()
 
 
 app = FastAPI(
@@ -66,3 +75,4 @@ app.include_router(settings_router)
 app.include_router(learning_data_router)
 app.include_router(jobs_router)
 app.include_router(vectors_router)
+app.include_router(runtime_router)

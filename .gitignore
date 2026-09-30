@@ -56,6 +56,7 @@ env/
 # Local RAG persistence
 data/chroma/
 data/*.sqlite3
+benchmarks/results/
 
 # Local release artifacts
 chaigaram-extension.zip

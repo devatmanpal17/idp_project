@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 import chromadb
 from .metrics import metrics
+from .residency import residency
 
 
 class RAGConfigurationError(RuntimeError):
@@ -36,7 +37,8 @@ class OllamaEmbeddings:
         started = time.perf_counter()
         request = urllib.request.Request(
             f"{self.base_url}/api/embed",
-            data=json.dumps({"model": self.model, "input": texts}).encode("utf-8"),
+            data=json.dumps({"model": self.model, "input": texts,
+                             "keep_alive": residency.keep_alive(self.model)}).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -162,6 +164,16 @@ class RAGEngine:
         self.jobs = JobStore(engine)
         self.vectors = VectorState(engine, self)
         self.vectors.recover()
+        from .scoped_store import ScopedStore
+        self.scoped = ScopedStore(self)
+        self.scoped.recover()
+        from .transfer import TransferEngine
+        self.scoped.transfer = TransferEngine(self.scoped)
+        from .evidence_lease import EvidenceLease
+        self.leases = EvidenceLease(self)
+        self.leases.recover()
+        from .answer_cache import AnswerCache
+        self.answer_cache = AnswerCache(self)
 
     def invalidate_cache(self) -> None:
         if hasattr(self, 'hot_cache'):
@@ -186,7 +198,8 @@ class RAGEngine:
 
     @property
     def all_chunks(self) -> List[Dict[str, Any]]:
-        result = self.collection.get(include=["documents", "metadatas"])
+        result = self.collection.get(where={"scope_kind": {"$ne": "scoped"}},
+                                     include=["documents", "metadatas"])
         return [
             {"id": chunk_id, "text": document or "", **(metadata or {})}
             for chunk_id, document, metadata in zip(
@@ -197,7 +210,8 @@ class RAGEngine:
         ]
 
     def topics(self) -> List[str]:
-        result = self.collection.get(include=["metadatas"])
+        result = self.collection.get(where={"scope_kind": {"$ne": "scoped"}},
+                                     include=["metadatas"])
         return sorted(
             {
                 str(metadata.get("topic"))
@@ -221,6 +235,15 @@ class RAGEngine:
         chunks = _chunk_text(normalised)
         if not chunks:
             raise ValueError("Document contains no indexable text.")
+        from sqlalchemy import text as sql_text
+        with self.vectors.engine.connect() as db:
+            blocked_hashes = set(db.execute(sql_text("""SELECT content_hash FROM scoped_chunks
+                WHERE state='DEMOTED'""")).scalars())
+            blocked_hashes.update(hashlib.sha256(_normalise(value).encode()).hexdigest()
+                for value in db.execute(sql_text("SELECT text FROM temporal_chunks WHERE state='DEMOTED'")).scalars())
+        if any(hashlib.sha256(_normalise(chunk).encode()).hexdigest() in blocked_hashes
+               for chunk in chunks):
+            raise ValueError('This evidence is locked until the quiz is submitted.')
         document_id = hashlib.sha256(
             f"{source}|{topic}|{normalised}".encode("utf-8")
         ).hexdigest()[:16]
@@ -279,7 +302,8 @@ class RAGEngine:
 
     def catalogue_records(self) -> List[Dict[str, Any]]:
         """Return persisted chunk metadata used to derive the live dashboard catalogue."""
-        result = self.collection.get(include=["documents", "metadatas"])
+        result = self.collection.get(where={"scope_kind": {"$ne": "scoped"}},
+                                     include=["documents", "metadatas"])
         return [
             {
                 "chunk_id": chunk_id,
@@ -303,7 +327,10 @@ class RAGEngine:
     def retrieve(
         self, query: str, topic: Optional[str] = None, top_k: int = 6,
         document_id: Optional[str] = None, require_topic: bool = False,
+        learner_key: Optional[str] = None, video_key: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
+        if learner_key and video_key:
+            return self.scoped.retrieve(learner_key, video_key, query, top_k, topic)
         with self._lock:
             key = json.dumps([self.model_version, query, topic, top_k, document_id, require_topic])
             cached = self.hot_cache.get(key)
@@ -329,6 +356,7 @@ class RAGEngine:
         kwargs: Dict[str, Any] = {
             "n_results": requested,
             "include": ["documents", "metadatas", "distances"],
+            "where": {"scope_kind": {"$ne": "scoped"}},
         }
         cache_topic = topic
         if document_id:
@@ -339,13 +367,15 @@ class RAGEngine:
                                if meta and meta.get('topic')}
             if not cache_topic and len(document_topics) == 1:
                 cache_topic = next(iter(document_topics))
-            kwargs["where"] = {"document_id": document_id}
+            kwargs["where"] = {"$and": [
+                {"document_id": document_id}, {"scope_kind": {"$ne": "scoped"}}]}
             kwargs["n_results"] = min(requested, len(document_records.get("ids", [])))
         elif topic:
             if not self._topic_exists(topic):
                 return []
             topic_records = self.collection.get(where={"topic": topic}, include=[])
-            kwargs["where"] = {"topic": topic}
+            kwargs["where"] = {"$and": [
+                {"topic": topic}, {"scope_kind": {"$ne": "scoped"}}]}
             kwargs["n_results"] = min(requested, len(topic_records.get("ids", [])))
         query_text = _normalise(f"{topic or ''} {query}")
         if not query_text:
@@ -358,6 +388,26 @@ class RAGEngine:
                                         priority=self._cache_priority(cache_topic))
         kwargs['query_embeddings'] = [query_vector]
         result = self.collection.query(**kwargs)
+        if document_id and os.getenv('B_VERIFY_EXACT', 'true').lower() == 'true':
+            from sqlalchemy import text as sql_text
+            from .answer_cache import cosine
+            with self.vectors.engine.connect() as db:
+                media = db.execute(sql_text("SELECT topic,source FROM media_documents WHERE id=:id AND state='CURRENT'"),
+                                   {'id': document_id}).mappings().first()
+                if media:
+                    rows = db.execute(sql_text("""SELECT * FROM temporal_chunks
+                        WHERE document_id=:id AND state='ACTIVE'"""), {'id': document_id}).mappings().all()
+            if media:
+                ranked = sorted(((cosine(query_vector, json.loads(row['vector_json'])), row['id'], row)
+                                 for row in rows if row['vector_json']), key=lambda item: (-item[0], item[1]))[:top_k]
+                result = {
+                    'ids': [[item[1] for item in ranked]],
+                    'documents': [[item[2]['text'] for item in ranked]],
+                    'metadatas': [[{'topic': media['topic'], 'course': media['topic'],
+                                   'source': media['source'], 'timestamp': str(item[2]['start_ms'] / 1000)}
+                                   for item in ranked]],
+                    'distances': [[1.0 - item[0] for item in ranked]],
+                }
         ids = (result.get("ids") or [[]])[0]
         docs = (result.get("documents") or [[]])[0]
         metas = (result.get("metadatas") or [[]])[0]
