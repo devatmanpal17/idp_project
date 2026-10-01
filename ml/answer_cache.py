@@ -36,8 +36,9 @@ class AnswerCache:
                 scope TEXT PRIMARY KEY, epoch INTEGER NOT NULL)"""))
 
     def key(self, question, scope, llm_model, k, topic):
-        normal = ' '.join(question.casefold().split())
-        value = [normal, scope, topic or '', llm_model, self.prompt_version, self.rag.model_version, k]
+        normal = ' '.join(question.split())
+        value = ['case-sensitive-v2', normal, scope, topic or '', llm_model,
+                 self.prompt_version, self.rag.model_version, k]
         return hashlib.sha256(json.dumps(value).encode()).hexdigest()
 
     def _epoch(self, db, scope):

@@ -214,6 +214,23 @@ class ScopedStoreTests(unittest.TestCase):
             self.assertEqual(self.embed.calls, calls)
             self.assertEqual(answer.call_count, 1)
 
+    def test_answer_cache_distinguishes_question_case(self):
+        self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
+        self.rag.scoped.intervals(self.learner, self.video, 1,
+            [{'start': 0, 'end': 12, 'wall_ms': 12000, 'rate': 1}])
+        with patch.object(routes, 'rag_engine', self.rag), patch.object(
+            routes.llm_service, 'answer_with_rag',
+            side_effect=lambda question, *_args, **_kwargs: f'Answer for {question}') as answer:
+            first = routes.ask_lesson(AskRequest(question='What is US?', source_type='video',
+                learner_key=self.learner, video_key=self.video))
+            second = routes.ask_lesson(AskRequest(question='What is us?', source_type='video',
+                learner_key=self.learner, video_key=self.video))
+            self.assertNotEqual(first['answer'], second['answer'])
+            self.assertEqual(answer.call_count, 2)
+            self.assertEqual(routes.ask_lesson(AskRequest(question='What is US?', source_type='video',
+                learner_key=self.learner, video_key=self.video)), first)
+            self.assertEqual(answer.call_count, 2)
+
     def test_cache_mutation_rules_match_random_exact_top_three(self):
         rng = random.Random(207)
         corpus = [[rng.gauss(0, 1) for _ in range(6)] for _ in range(30)]
