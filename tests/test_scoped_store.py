@@ -1,10 +1,13 @@
 import tempfile
 import unittest
+import json
+import random
 from pathlib import Path
 from unittest.mock import patch
 from sqlalchemy import create_engine, text
 from ml.rag_engine import RAGEngine
 from ml.scoped_store import unblob
+from ml.answer_cache import cosine
 from backend.models import AskRequest
 from backend.routes import rag as routes
 from backend.routes import vectors as vector_routes
@@ -210,6 +213,36 @@ class ScopedStoreTests(unittest.TestCase):
             self.assertEqual(routes.ask_lesson(req), first)
             self.assertEqual(self.embed.calls, calls)
             self.assertEqual(answer.call_count, 1)
+
+    def test_cache_mutation_rules_match_random_exact_top_three(self):
+        rng = random.Random(207)
+        corpus = [[rng.gauss(0, 1) for _ in range(6)] for _ in range(30)]
+        incoming = [rng.gauss(0, 1) for _ in range(6)]
+        entries = {}
+        with self.db.begin() as db:
+            for number in range(100):
+                query = [rng.gauss(0, 1) for _ in range(6)]
+                ranked = sorted(range(len(corpus)),
+                    key=lambda index: (-cosine(query, corpus[index]), index))[:3]
+                kth = cosine(query, corpus[ranked[-1]])
+                key = f'property-{number}'
+                entries[key] = (query, ranked, kth)
+                db.execute(text('''INSERT INTO answer_cache VALUES
+                    (:key,'property',0,:query,3,:kth,:ids,'{}','now')'''),
+                    {'key': key, 'query': json.dumps(query), 'kth': kth,
+                     'ids': json.dumps([str(index) for index in ranked])})
+        self.rag.answer_cache.insert('property', [incoming])
+        with self.db.connect() as db:
+            remaining = set(db.execute(text("SELECT key FROM answer_cache WHERE scope='property'")).scalars())
+        expected = {key for key, (query, _, kth) in entries.items()
+                    if cosine(query, incoming) < kth}
+        self.assertEqual(remaining, expected)
+        removed = {'7'}
+        self.rag.answer_cache.remove('property', removed)
+        with self.db.connect() as db:
+            remaining = set(db.execute(text("SELECT key FROM answer_cache WHERE scope='property'")).scalars())
+        self.assertEqual(remaining, {key for key in expected
+            if not removed.intersection(str(index) for index in entries[key][1])})
 
     def test_changed_caption_revision_removes_old_evidence_and_observation(self):
         self.rag.scoped.seal(self.learner, self.video, self.cues, 12)

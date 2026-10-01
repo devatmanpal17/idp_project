@@ -30,7 +30,7 @@ class ResidencyTests(unittest.TestCase):
         self.assertEqual(transport.actions, [])
         transport.loaded = {'embeddinggemma:latest': 1000, 'llama3.2:3b': 2000}
         controller.transition('PAUSED')
-        self.assertEqual(transport.actions, [])
+        self.assertEqual(transport.actions, [('llama3.2:3b', '-1', False)])
 
     def test_pause_preload_play_dwell_and_hidden_release(self):
         tick = [0.0]
@@ -39,14 +39,15 @@ class ResidencyTests(unittest.TestCase):
         controller = ResidencyController(transport=transport, clock=lambda: tick[0])
         controller.budget_mb = 4000
         controller.transition('PLAYING')
+        self.assertEqual(transport.actions[-1][:2], ('embeddinggemma', '-1'))
         tick[0] = controller.play_dwell - 0.1
         controller.tick()
-        self.assertEqual(transport.actions, [])
+        self.assertEqual(len(transport.actions), 1)
         tick[0] = controller.play_dwell + 0.1
         controller.tick()
         self.assertEqual(transport.actions[-1][:2], ('llama3.2:3b', '0'))
         controller.transition('PAUSED')
-        self.assertEqual(len(transport.actions), 1)  # cooldown
+        self.assertEqual(len(transport.actions), 2)  # cooldown
         tick[0] += controller.cooldown + 0.1
         controller.tick()
         self.assertEqual(transport.actions[-1][:2], ('llama3.2:3b', '-1'))

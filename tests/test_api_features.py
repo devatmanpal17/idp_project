@@ -133,6 +133,39 @@ class APIFeaturesTests(unittest.TestCase):
         self.assertEqual(deleted_job['status'], 'failed')
         self.assertNotIn('result', deleted_job)
 
+    def test_scoped_http_seal_observe_quiz_lease_and_restore(self):
+        scope = {'learner_key': 'learner-http', 'video_key': 'youtube:http-test'}
+        cues = [{'start': 0, 'end': 10, 'text': LESSON},
+                {'start': 20, 'end': 21, 'text': 'Unwatched hidden secret is a copper lantern.'}]
+        started = self.post('jobs', {'operation': 'seal', 'request_id': 'http-seal-001',
+            'payload': {**scope, 'cues': cues, 'duration': 30}}, code=202)
+        sealed = self.wait_job(started['job_id'])['result']
+        self.assertGreater(sealed['sealed_added'], 0)
+        self.assertEqual(sealed['counts'].get('ACTIVE', 0), 0)
+        self.post('f1/intervals', {**scope, 'batch_seq': 1,
+            'intervals': [{'start': 0, 'end': 10, 'wall_ms': 10000, 'rate': 1}]})
+        status = self.client.get('/api/f1/status').json()
+        self.assertTrue(status['enabled'])
+        self.assertGreater(status['scoped_counts'].get('ACTIVE', 0), 0)
+        question = {**scope, 'source_type': 'video',
+                    'question': 'How does binary search work?', 'top_k': 1,
+                    'transcript_context': 'Unwatched hidden secret is a copper lantern.'}
+        first = self.post('rag/ask', question)
+        self.assertNotIn('copper lantern', str(first))
+        self.assertEqual(self.post('rag/ask', question), first)
+        summary = self.post('rag/summarize', {**scope, 'source_type': 'video',
+            'topic': 'Binary search', 'page_content': 'Unwatched hidden secret is a copper lantern.'})
+        self.assertNotIn('copper lantern', str(summary))
+        quiz = self.post('rag/generate-quiz', {**scope, 'source_type': 'video',
+            'topic': 'Binary search', 'question_count': 1})
+        self.assertNotIn('answer', quiz['questions'][0])
+        self.assertGreater(self.client.get('/api/f1/status').json()['open_leases'], 0)
+        self.assertFalse(self.rag.scoped.retrieve(scope['learner_key'], scope['video_key'], 'binary search'))
+        self.post('rag/evaluate-quiz', {'topic': 'Binary search', 'quiz_id': quiz['quiz_id'],
+            'given_answers': ['A sorted sequence']})
+        self.assertEqual(self.client.get('/api/f1/status').json()['open_leases'], 0)
+        self.assertTrue(self.rag.scoped.retrieve(scope['learner_key'], scope['video_key'], 'binary search'))
+
     def test_invalid_inputs_and_missing_resources_are_handled(self):
         self.post('jobs', {'operation': 'quiz', 'payload': {'topic': 'Missing', 'question_count': 0}}, code=422)
         self.post('rag/ask', {'question': 'Test', 'source_type': 'video'}, code=422)

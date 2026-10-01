@@ -56,7 +56,9 @@ class ResidencyController:
         self.player_active = False
         self.loads = 0
         self.unloads = 0
+        self.pins = 0
         self.last_resident_mb = 0.0
+        self.pinned = set()
 
     def keep_alive(self, model):
         if not self.enabled or not self.player_active:
@@ -67,13 +69,19 @@ class ResidencyController:
             return self.default_keep_alive
         return -1
 
-    def _act(self, model, keep_alive):
+    def _act(self, model, keep_alive, loaded=False):
         self.transport.control(model, keep_alive,
                                embed=canonical_model(model) == canonical_model(self.embedder))
         if keep_alive == '0':
             self.unloads += 1
+            self.pinned.discard(canonical_model(model))
         else:
-            self.loads += 1
+            if loaded:
+                self.pins += 1
+            else:
+                self.loads += 1
+            if keep_alive == '-1':
+                self.pinned.add(canonical_model(model))
         self.last_action = self.clock()
 
     def transition(self, state):
@@ -93,6 +101,7 @@ class ResidencyController:
                 models = self.transport.ps()
                 self.enabled = True
                 resident = {canonical_model(item.get('name', item.get('model', ''))): item for item in models}
+                self.pinned.intersection_update(resident)
                 llm_key, embed_key = canonical_model(self.llm), canonical_model(self.embedder)
                 self.last_resident_mb = sum(int(item.get('size', 0)) for item in models) / (1024 * 1024)
                 if self.clock() - self.last_action < self.cooldown:
@@ -105,11 +114,13 @@ class ResidencyController:
                             return self.status()
                     if llm_key not in resident:
                         self._act(self.llm, '-1')
-                    elif embed_key not in resident:
-                        self._act(self.embedder, '-1')
+                    elif llm_key not in self.pinned:
+                        self._act(self.llm, '-1', loaded=True)
+                    elif embed_key not in resident or embed_key not in self.pinned:
+                        self._act(self.embedder, '-1', loaded=embed_key in resident)
                 elif self.state == 'PLAYING':
-                    if embed_key not in resident:
-                        self._act(self.embedder, '-1')
+                    if embed_key not in resident or embed_key not in self.pinned:
+                        self._act(self.embedder, '-1', loaded=embed_key in resident)
                     elif self.clock() - self.state_since >= self.play_dwell and self.last_resident_mb > self.budget_mb and llm_key in resident:
                         self._act(self.llm, '0')
                 elif self.state == 'HIDDEN' and self.clock() - self.state_since >= self.hidden_dwell:
@@ -127,7 +138,7 @@ class ResidencyController:
         return {'state': self.state, 'enabled': self.enabled,
                 'player_active': self.player_active,
                 'resident_mb': self.last_resident_mb,
-                'loads': self.loads, 'unloads': self.unloads}
+                'loads': self.loads, 'unloads': self.unloads, 'pins': self.pins}
 
 
 residency = ResidencyController()
