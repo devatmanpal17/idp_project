@@ -36,8 +36,8 @@ class AnswerCache:
                 scope TEXT PRIMARY KEY, epoch INTEGER NOT NULL)"""))
 
     def key(self, question, scope, llm_model, k, topic):
-        normal = ' '.join(question.split())
-        value = ['case-sensitive-v2', normal, scope, topic or '', llm_model,
+        # Case and internal whitespace can change code or quoted-string questions.
+        value = ['verbatim-question-v3', question, scope, topic or '', llm_model,
                  self.prompt_version, self.rag.model_version, k]
         return hashlib.sha256(json.dumps(value).encode()).hexdigest()
 
@@ -56,8 +56,9 @@ class AnswerCache:
                     learner, video = scope.removeprefix('scoped:').split('|', 1)
                     from .scoped_store import unblob
                     active = [dict(item) for item in db.execute(text("""SELECT * FROM scoped_chunks
-                        WHERE learner_key=:learner AND video_key=:video AND state='ACTIVE'"""),
-                        {'learner': learner, 'video': video}).mappings()]
+                        WHERE learner_key=:learner AND video_key=:video AND state='ACTIVE'
+                        AND embed_model=:model"""),
+                        {'learner': learner, 'video': video, 'model': self.rag.model_version}).mappings()]
                     by_id = {item['chunk_id']: item for item in active}
                     ranked = sorted(((cosine(vector, unblob(item['vector'])), item)
                                      for item in active),

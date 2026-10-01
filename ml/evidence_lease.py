@@ -136,16 +136,14 @@ class EvidenceLease:
                     if not source_row:
                         continue
                     for block in blocks:
-                        if (source_row['t_start'] < block['source_start'] - 1 or
-                            source_row['t_end'] > block['source_end'] + 1):
-                            continue
-                        scale = (block['target_end'] - block['target_start']) / (
-                            block['source_end'] - block['source_start'])
-                        mapped_start = block['target_start'] + (source_row['t_start'] - block['source_start']) * scale
-                        mapped_end = block['target_start'] + (source_row['t_end'] - block['source_start']) * scale
-                        for row in counterparts:
-                            if row['t_start'] < mapped_end and mapped_start < row['t_end']:
-                                selected.add(row['chroma_id'])
+                        for segment in block['segments']:
+                            if not any(source_row['t_start'] < end and start < source_row['t_end']
+                                       for start, end in segment['source_spans']):
+                                continue
+                            for row in counterparts:
+                                if (row['t_start'] < segment['target_end'] and
+                                    segment['target_start'] < row['t_end']):
+                                    selected.add(row['chroma_id'])
             lease_id = existing.id if existing else uuid.uuid4().hex
             opened = _now()
             expires = opened + timedelta(seconds=len(questions) * self.seconds_per_question + self.grace_seconds)

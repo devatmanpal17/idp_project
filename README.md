@@ -92,6 +92,14 @@ For documents it locates the main article/content container and removes navigati
 
 For videos it collects timestamped captions from native text tracks, YouTube caption data, or visible caption elements. Available tracks, including future captions, can be stored and embedded in a sealed SQL store. Only caption chunks fully covered by observed playback intervals are promoted to the searchable Chroma index; forward seeking does not unlock skipped content.
 
+The YouTube F1 path scopes vectors by learner and video and keeps separate micro
+and macro chunks. Interval uploads include the caption `revision` returned by
+sealing, so delayed uploads cannot unlock a replacement track. Transcript changes
+revoke dependent transferred evidence. Cross-video transfer requires observation
+of the complete matching source cues; it does not infer word-level timing or a
+uniform timing scale. Embedding-model changes require resealing with the current
+model, while retaining direct observation for an unchanged track.
+
 Captured context is limited to 48,000 characters. Video quizzes require at least 50 caption words.
 
 ### 2. Index content
@@ -207,6 +215,11 @@ Time is capped at 100% after 15 tracked minutes. Revisit frequency is capped at 
 | `GET` | `/api/recommendations/smart` | Return assessment-based recommendations |
 | `POST` | `/api/jobs` | Start a slow AI operation |
 | `GET` | `/api/jobs/{job_id}` | Poll job status and result |
+| `POST` | `/api/f1/seal` | Seal learner/video caption vectors and return their revision |
+| `POST` | `/api/f1/intervals` | Validate revision-bound observation batches and promote covered vectors |
+| `GET` | `/api/f1/status` | Inspect scoped vectors, leases, answer cache, transfer, and residency |
+| `POST` | `/api/runtime/player-state` | Apply playback state to the local residency policy |
+| `POST` | `/api/rag/abandon-quiz/{quiz_id}` | Close a quiz's evidence lease |
 
 Interactive API documentation is available at `http://127.0.0.1:8000/docs` while the backend is running.
 
@@ -350,6 +363,12 @@ npm run build
 ```
 
 Tests cover observation gating, restart recovery, grounded quiz validation and selective repair, history deletion, recall-prioritized byte-bounded result and query-vector caches, recall forecasts, recommendations, and the HTTP routes. For a disposable live model and Chrome run, see [feature verification](patent/03_FEATURE_VERIFICATION.md) and its reproduction commands in [architecture and security](patent/02_ARCHITECTURE_AND_SECURITY.md). The [feature matrix](patent/04_PRIOR_ART_FEATURE_MATRIX.md) maps the patent comparison language to implementation and tests.
+
+The [2026-10-02 patent-feature audit](patent/05_PATENT_FEATURE_AUDIT_2026-10-02.md)
+records the follow-up defects, fixes, regression coverage, and remaining evidence
+limits. Run `python scripts/check_patent_features.py` for real local embedding,
+cache, transfer, lease, and restart checks on disposable caption data. Run live
+browser/model checks separately from large benchmarks to reduce resource contention.
 
 ## Current limitations
 

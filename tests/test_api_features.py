@@ -10,8 +10,10 @@ from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from fastapi.exceptions import RequestValidationError
+from backend.validation import request_validation_error
 from sqlalchemy import create_engine
-from backend.routes import rag, vectors, jobs, learning_data, settings, health, recommendations
+from backend.routes import rag, vectors, jobs, learning_data, settings, health, recommendations, runtime
 from ml.analytics import QuizAnalyticsStore
 from ml.rag_engine import RAGEngine
 from ml.llm_service import LLMService
@@ -54,7 +56,8 @@ class APIFeaturesTests(unittest.TestCase):
             self.stack.enter_context(patch.object(module, 'llm_service', self.llm))
         self.stack.enter_context(patch.object(jobs, 'store', self.rag.jobs))
         app = FastAPI()
-        for module in [rag, vectors, jobs, learning_data, settings, health, recommendations]:
+        app.add_exception_handler(RequestValidationError, request_validation_error)
+        for module in [rag, vectors, jobs, learning_data, settings, health, recommendations, runtime]:
             app.include_router(module.router)
         self.client = TestClient(app)
 
@@ -142,7 +145,9 @@ class APIFeaturesTests(unittest.TestCase):
         sealed = self.wait_job(started['job_id'])['result']
         self.assertGreater(sealed['sealed_added'], 0)
         self.assertEqual(sealed['counts'].get('ACTIVE', 0), 0)
-        self.post('f1/intervals', {**scope, 'batch_seq': 1,
+        self.post('f1/intervals', {**scope, 'batch_seq': 1, 'revision': '0' * 64,
+            'intervals': [{'start': 0, 'end': 10, 'wall_ms': 10000, 'rate': 1}]}, code=422)
+        self.post('f1/intervals', {**scope, 'batch_seq': 1, 'revision': sealed['revision'],
             'intervals': [{'start': 0, 'end': 10, 'wall_ms': 10000, 'rate': 1}]})
         status = self.client.get('/api/f1/status').json()
         self.assertTrue(status['enabled'])
@@ -174,3 +179,24 @@ class APIFeaturesTests(unittest.TestCase):
         self.post('observation/intervals', {'document_id': 'missing', 'media_session_id': 'session-123',
             'event_sequence': 1, 'evidence': 'rendered-frame',
             'observed_intervals': [{'start_ms': 10, 'end_ms': 1}]}, code=422)
+
+    def test_scoped_inputs_reject_ambiguous_keys_and_incomplete_scopes(self):
+        scope = {'learner_key': 'learner-http', 'video_key': 'youtube:http-test'}
+        seal = {**scope, 'duration': 10, 'cues': [{'start': 0, 'end': 1, 'text': LESSON}]}
+        for fields in ({'learner_key': 'learner|youtube:other'}, {'video_key': 'youtube:a|b'},
+                       {'video_key': 'youtube:'}, {'learner_key': ' '}, {'duration': 1e300}):
+            with self.subTest(fields=fields):
+                self.post('f1/seal', {**seal, **fields}, code=422)
+        for fields in ({'learner_key': 'learner-http'}, {'video_key': 'youtube:http-test'},
+                       {'learner_key': 'learner|other', 'video_key': 'youtube:http-test'}):
+            with self.subTest(fields=fields):
+                self.post('rag/ask', {'question': 'Explain this', 'source_type': 'video', **fields}, code=422)
+        for seq in (True, 1.5, '1'):
+            self.post('f1/intervals', {**scope, 'batch_seq': seq, 'revision': 'a' * 64, 'intervals': []}, code=422)
+        self.post('f1/intervals', {**scope, 'batch_seq': 1, 'revision': 'a' * 64,
+            'intervals': [{'start': 2, 'end': 1, 'wall_ms': 1000, 'rate': 1}]}, code=422)
+        # JSON parsers may accept NaN; the runtime envelope must reject it.
+        response = self.client.post('/api/runtime/player-state',
+            content=json.dumps({**scope, 'state': 'PAUSED', 'media_time': float('nan'), 'ts': 0}),
+            headers={'Content-Type': 'application/json'})
+        self.assertEqual(response.status_code, 422, response.text)

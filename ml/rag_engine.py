@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 
 import chromadb
 from .metrics import metrics
-from .residency import residency
+from .residency import canonical_model, residency
 
 
 class RAGConfigurationError(RuntimeError):
@@ -131,9 +131,13 @@ class RAGEngine:
             try:
                 with urllib.request.urlopen(f"{self.embeddings.base_url}/api/tags", timeout=2) as response:
                     models = json.loads(response.read()).get('models', [])
-                match = next((m for m in models if m.get('name', '').split(':')[0] == self.embeddings.model.split(':')[0]), None)
+                requested = canonical_model(self.embeddings.model)
+                match = next((m for m in models
+                              if canonical_model(m.get('name', m.get('model', ''))) == requested), None)
                 if match and match.get('digest'):
                     self.model_version = f"{self.embeddings.model}:{match['digest']}"
+                else:
+                    self.model_version += ':unresolved'
             except (urllib.error.URLError, OSError, ValueError):
                 # Explicitly version unavailable service configurations. Never mix with a digest collection.
                 self.model_version += ':unresolved'

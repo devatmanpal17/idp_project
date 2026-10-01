@@ -1,3 +1,4 @@
+import { chartAxis } from "@/lib/chart-axis";
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -28,7 +29,6 @@ import {
   SignalBar,
   Meter,
   TrendArrow,
-  chartAxis,
 } from "@/components/chaigaram/primitives";
 import { QuizGenerator } from "@/components/chaigaram/QuizGenerator";
 

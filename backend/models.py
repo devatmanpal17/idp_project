@@ -2,8 +2,11 @@
 Pydantic request / response models for the ChaiGaram AI API.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
-from typing import List, Dict, Any, Optional, Literal
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import Annotated, List, Dict, Any, Optional, Literal
+
+LearnerKey = Annotated[str, Field(min_length=1, max_length=100, pattern=r'^[^|\s]+$')]
+VideoKey = Annotated[str, Field(min_length=1, max_length=200, pattern=r'^youtube:[^|\s]+$')]
 
 
 class RequestModel(BaseModel):
@@ -22,9 +25,18 @@ class ChatTurn(BaseModel):
     content: str = Field(..., min_length=1, max_length=4000)
 
 
-class AskRequest(RequestModel):
-    learner_key: Optional[str] = Field(default=None, max_length=100)
-    video_key: Optional[str] = Field(default=None, max_length=200)
+class VideoScopeRequest(RequestModel):
+    learner_key: Optional[LearnerKey] = None
+    video_key: Optional[VideoKey] = None
+
+    @model_validator(mode='after')
+    def complete_scope(self):
+        if (self.learner_key is None) != (self.video_key is None):
+            raise ValueError('learner_key and video_key must be supplied together.')
+        return self
+
+
+class AskRequest(VideoScopeRequest):
     document_id: Optional[str] = Field(default=None, max_length=64)
     question: str = Field(..., min_length=2, max_length=2000)
     topic: Optional[str] = Field(default=None, max_length=300)
@@ -35,9 +47,7 @@ class AskRequest(RequestModel):
     observed_until_seconds: float = Field(default=0, ge=0)
 
 
-class SummarizeRequest(RequestModel):
-    learner_key: Optional[str] = Field(default=None, max_length=100)
-    video_key: Optional[str] = Field(default=None, max_length=200)
+class SummarizeRequest(VideoScopeRequest):
     document_id: Optional[str] = Field(default=None, max_length=64)
     topic: str = Field(..., min_length=2, max_length=300)
     page_content: str = Field(default="", max_length=50000)
@@ -46,9 +56,7 @@ class SummarizeRequest(RequestModel):
     observed_until_seconds: float = Field(default=0, ge=0)
 
 
-class GenerateQuizRequest(RequestModel):
-    learner_key: Optional[str] = Field(default=None, max_length=100)
-    video_key: Optional[str] = Field(default=None, max_length=200)
+class GenerateQuizRequest(VideoScopeRequest):
     document_id: Optional[str] = Field(default=None, max_length=64)
     topic: str = Field(..., description="Target topic name")
     mastery_score: float = Field(default=0.0, ge=0, le=100, description="Persisted current mastery score (0-100)")

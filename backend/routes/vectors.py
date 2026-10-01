@@ -6,6 +6,7 @@ from ml import rag_engine
 from ml.temporal import Caption, Interval, MAX_MEDIA_MS
 from ml.metrics import metrics
 from .rag import _service_error
+from ..models import LearnerKey, VideoKey
 
 router = APIRouter()
 
@@ -15,9 +16,9 @@ class ScopedInput(BaseModel):
 
 
 class ScopedCue(ScopedInput):
-    start: float = Field(ge=0)
-    end: float = Field(gt=0)
-    text: str = Field(min_length=1)
+    start: float = Field(ge=0, le=MAX_MEDIA_MS / 1000)
+    end: float = Field(gt=0, le=MAX_MEDIA_MS / 1000)
+    text: str = Field(min_length=1, max_length=12000)
 
     @model_validator(mode='after')
     def ordered(self):
@@ -27,23 +28,30 @@ class ScopedCue(ScopedInput):
 
 
 class SealRequest(ScopedInput):
-    learner_key: str = Field(min_length=1, max_length=100)
-    video_key: str = Field(min_length=1, max_length=200)
+    learner_key: LearnerKey
+    video_key: VideoKey
     cues: list[ScopedCue] = Field(min_length=1, max_length=20000)
-    duration: float = Field(gt=0)
+    duration: float = Field(gt=0, le=MAX_MEDIA_MS / 1000)
 
 
 class RenderedInterval(ScopedInput):
-    start: float = Field(ge=0)
-    end: float = Field(gt=0)
+    start: float = Field(ge=0, le=MAX_MEDIA_MS / 1000)
+    end: float = Field(gt=0, le=MAX_MEDIA_MS / 1000)
     wall_ms: float = Field(gt=0)
     rate: float = Field(gt=0, le=16)
 
+    @model_validator(mode='after')
+    def ordered(self):
+        if self.end <= self.start:
+            raise ValueError('Interval end must be after start.')
+        return self
+
 
 class ScopedIntervalsRequest(ScopedInput):
-    learner_key: str = Field(min_length=1, max_length=100)
-    video_key: str = Field(min_length=1, max_length=200)
-    batch_seq: int = Field(ge=0)
+    learner_key: LearnerKey
+    video_key: VideoKey
+    batch_seq: int = Field(ge=0, strict=True)
+    revision: str = Field(pattern=r'^[a-f0-9]{64}$')
     intervals: list[RenderedInterval] = Field(max_length=10000)
 
 
@@ -64,7 +72,7 @@ def scoped_intervals(req: ScopedIntervalsRequest):
         if not rag_engine.scoped.enabled:
             raise ValueError('F1 scoped indexing is disabled.')
         return rag_engine.scoped.intervals(req.learner_key, req.video_key, req.batch_seq,
-            [item.model_dump() for item in req.intervals])
+            [item.model_dump() for item in req.intervals], revision=req.revision)
     except Exception as exc:
         raise _service_error(exc) from exc
 

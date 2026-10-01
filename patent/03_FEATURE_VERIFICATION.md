@@ -1,5 +1,9 @@
 # Feature verification — 2026-09-27
 
+This is a historical verification snapshot. The later F1/A–E implementation and
+follow-up regression audit are recorded in
+[the 2026-10-02 audit](05_PATENT_FEATURE_AUDIT_2026-10-02.md).
+
 This report describes the working tree on `patent/observation-gated-vector-system`.
 The initial audit is in `00_IMPLEMENTATION_AUDIT.md`; the architecture, state
 transitions, threat boundary, and reproduction steps are in

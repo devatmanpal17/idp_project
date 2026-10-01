@@ -20,6 +20,28 @@ def unit(rng, rows, dims=64):
     return values / np.maximum(np.linalg.norm(values, axis=1, keepdims=True), 1e-8)
 
 
+def lease_statistics(corpus, queries, mask, batch_size=32):
+    """Keep score/partition scratch space proportional to one query batch."""
+    unmasked_leaks, masked_leaks, available, recalls, boundaries = [], [], [], [], []
+    hidden_ids = np.flatnonzero(mask)
+    for offset in range(0, len(queries), batch_size):
+        scores = queries[offset:offset + batch_size] @ corpus.T
+        top = np.argpartition(scores, -5, axis=1)[:, -5:]
+        unmasked_leaks.extend(np.any(np.isin(top, hidden_ids), axis=1))
+        masked = scores.copy()
+        masked[:, mask] = -np.inf
+        leased_top = np.argpartition(masked, -5, axis=1)[:, -5:]
+        masked_leaks.extend(np.any(np.isin(leased_top, hidden_ids), axis=1))
+        available.extend(np.isfinite(np.max(masked, axis=1)))
+        restored_top = np.argpartition(scores, -5, axis=1)[:, -5:]
+        recalls.extend(len(set(a) & set(b)) / 5 for a, b in zip(top, restored_top))
+        boundaries.extend(np.partition(scores, -5, axis=1)[:, -5])
+    return {'unmasked_leak': float(np.mean(unmasked_leaks)),
+            'masked_leak': float(np.mean(masked_leaks)),
+            'available': float(np.mean(available)), 'recall': float(np.mean(recalls)),
+            'kth': np.asarray(boundaries)}
+
+
 def percentile(values, p):
     return float(np.percentile(values, p))
 
@@ -144,33 +166,25 @@ def run(seed, repeats, real_ollama=False):
             mask[0] = True
             demote_us = (time.perf_counter_ns() - start) / 1000
             start = time.perf_counter_ns()
-            scores = queries @ corpus.T
-            top = np.argpartition(scores, -5, axis=1)[:, -5:]
-            no_mask_leak = float(np.any(np.isin(top, np.flatnonzero(mask)), axis=1).mean())
-            masked = scores.copy()
-            masked[:, mask] = -np.inf
-            leased_top = np.argpartition(masked, -5, axis=1)[:, -5:]
-            lease_leak = float(np.any(np.isin(leased_top, np.flatnonzero(mask)), axis=1).mean())
+            measured = lease_statistics(corpus, queries, mask)
             rows.append(dict(feature='A', metric='leakage_rate', size=size, repeat=repeat,
-                             baseline=no_mask_leak, invention=lease_leak,
+                             baseline=measured['unmasked_leak'], invention=measured['masked_leak'],
                              unit='fraction', elapsed_us=(time.perf_counter_ns()-start)/1000))
             rows.append(dict(feature='A', metric='global_disable_leakage_rate', size=size,
                 repeat=repeat, baseline=0.0, invention=0.0, unit='fraction', elapsed_us=None))
             rows.append(dict(feature='A', metric='available_retrieval_fraction', size=size,
                 repeat=repeat, baseline=0.0,
-                invention=float(np.isfinite(np.max(masked, axis=1)).mean()),
+                invention=measured['available'],
                 unit='fraction', elapsed_us=None))
-            restored_top = np.argpartition(scores, -5, axis=1)[:, -5:]
             rows.append(dict(feature='A', metric='restored_recall_at_5', size=size,
                 repeat=repeat, baseline=1.0,
-                invention=float(np.mean([len(set(a) & set(b)) / 5
-                    for a, b in zip(top, restored_top)])), unit='fraction', elapsed_us=None))
+                invention=measured['recall'], unit='fraction', elapsed_us=None))
             rows.append(dict(feature='A', metric='demote_check', size=size, repeat=repeat,
                              baseline=None, invention=demote_us, unit='microseconds', elapsed_us=demote_us))
 
             # Each cache entry's score is its exact fifth result. Inserting a new vector
             # changes that top five iff its cosine reaches the entry-specific boundary.
-            kth = np.partition(scores, -5, axis=1)[:, -5]
+            kth = measured['kth']
             incoming = unit(rng, 1)[0]
             start = time.perf_counter_ns()
             insert_scores = queries @ incoming
@@ -220,7 +234,7 @@ def run(seed, repeats, real_ollama=False):
             baseline=None, invention=controller.unloads, unit='count', elapsed_us=None))
 
         # Synthetic seek: 30 of 120 seconds observed, one macro spans all 120;
-        # six ten-second micro intervals have three eligible for retrieval.
+        # only the two whole ten-second micros inside [45, 75] are eligible.
         watched = [(45, 75)]
         micro_covered = sum(10 for start in range(0, 120, 10)
                             if start >= watched[0][0] and start + 10 <= watched[0][1])
@@ -297,6 +311,7 @@ def main():
         writer.writeheader(); writer.writerows(rows)
     import chromadb
     metadata = {'synthetic': True, 'seed': args.seed, 'repeats': args.repeats,
+        'query_batch_size': 32,
         'started_at': started.isoformat(), 'platform': platform.platform(),
         'processor': platform.processor(), 'python': sys.version,
         'numpy': np.__version__, 'chromadb': chromadb.__version__,
