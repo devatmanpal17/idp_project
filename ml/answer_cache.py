@@ -8,6 +8,7 @@ import os
 from datetime import datetime, timezone
 
 from sqlalchemy import text
+import numpy as np
 
 
 def cosine(a, b):
@@ -24,6 +25,7 @@ class AnswerCache:
         self.hits = 0
         self.misses = 0
         self.prompt_version = os.getenv('B_PROMPT_VERSION', 'video-answer-v1')
+        self._matrices = {}
         with self.engine.begin() as db:
             db.execute(text("""CREATE TABLE IF NOT EXISTS answer_cache (
                 key TEXT PRIMARY KEY, scope TEXT NOT NULL, epoch INTEGER NOT NULL,
@@ -97,6 +99,7 @@ class AnswerCache:
                 query_vector_json=excluded.query_vector_json,k=excluded.k,
                 kth_score=excluded.kth_score,retrieved_ids_json=excluded.retrieved_ids_json,
                 response_json=excluded.response_json,created_at=excluded.created_at"""), values)
+            self._matrices.pop(scope, None)
 
     def _vector(self, chunk_id):
         with self.engine.connect() as db:
@@ -115,12 +118,50 @@ class AnswerCache:
         if not vectors:
             return 0
         with self.lock, self.engine.begin() as db:
-            rows = db.execute(text('SELECT key,query_vector_json,kth_score FROM answer_cache WHERE scope=:scope'),
-                              {'scope': scope}).all()
-            invalid = [key for key, query, score in rows if any(
-                cosine(json.loads(query), vector) >= score for vector in vectors)]
+            if scope not in self._matrices:
+                rows = db.execute(text('''SELECT key,query_vector_json,kth_score
+                    FROM answer_cache WHERE scope=:scope ORDER BY key'''),
+                    {'scope': scope}).all()
+                # Query vectors within a model version share dimensions. An old
+                # dimension is conservatively invalidated instead of compared.
+                by_dim = {}
+                for key, encoded, score in rows:
+                    vector = json.loads(encoded)
+                    by_dim.setdefault(len(vector), []).append((key, vector, score))
+                matrices = {}
+                for dim, entries in by_dim.items():
+                    queries = np.asarray([item[1] for item in entries], dtype=np.float64)
+                    norms = np.linalg.norm(queries, axis=1)
+                    queries = np.divide(queries, norms[:, None], out=np.zeros_like(queries),
+                                        where=norms[:, None] > 0)
+                    matrices[dim] = ([item[0] for item in entries], queries,
+                                     np.asarray([item[2] for item in entries], dtype=np.float64), norms)
+                self._matrices[scope] = matrices
+            invalid = set()
+            matrices = self._matrices[scope]
+            incoming_by_dim = {}
+            for raw in vectors:
+                incoming_by_dim.setdefault(len(raw), []).append(raw)
+            for dim, (keys, queries, thresholds, norms) in matrices.items():
+                if any(other_dim != dim for other_dim in incoming_by_dim):
+                    invalid.update(keys)
+                    continue
+                incoming = np.asarray(incoming_by_dim.get(dim, []), dtype=np.float64)
+                if incoming.size == 0:
+                    continue
+                incoming_norms = np.linalg.norm(incoming, axis=1)
+                incoming = np.divide(incoming, incoming_norms[:, None],
+                                     out=np.zeros_like(incoming), where=incoming_norms[:, None] > 0)
+                similarities = queries @ incoming.T
+                similarities = np.where((norms[:, None] > 0) & (incoming_norms[None, :] > 0),
+                                        similarities, -1.0)
+                # Floating-point ties are conservatively invalidated.
+                changed = np.any(similarities >= thresholds[:, None] - 1e-12, axis=1)
+                invalid.update(key for key, hit in zip(keys, changed) if hit)
             for key in invalid:
                 db.execute(text('DELETE FROM answer_cache WHERE key=:key'), {'key': key})
+            if invalid:
+                self._matrices.pop(scope, None)
             return len(invalid)
 
     def remove(self, scope, ids):
@@ -133,12 +174,15 @@ class AnswerCache:
             invalid = [key for key, encoded in rows if removed.intersection(json.loads(encoded))]
             for key in invalid:
                 db.execute(text('DELETE FROM answer_cache WHERE key=:key'), {'key': key})
+            if invalid:
+                self._matrices.pop(scope, None)
             return len(invalid)
 
     def bump_epoch(self, scope):
         with self.lock, self.engine.begin() as db:
             db.execute(text("""INSERT INTO answer_cache_epochs VALUES (:scope,1)
                 ON CONFLICT(scope) DO UPDATE SET epoch=epoch+1"""), {'scope': scope})
+            self._matrices.pop(scope, None)
 
     def status(self):
         with self.engine.connect() as db:

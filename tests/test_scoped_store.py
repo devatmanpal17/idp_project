@@ -243,6 +243,9 @@ class ScopedStoreTests(unittest.TestCase):
             remaining = set(db.execute(text("SELECT key FROM answer_cache WHERE scope='property'")).scalars())
         self.assertEqual(remaining, {key for key in expected
             if not removed.intersection(str(index) for index in entries[key][1])})
+        self.rag.answer_cache.insert('property', [[1.0] * 7])
+        with self.db.connect() as db:
+            self.assertEqual(db.execute(text("SELECT COUNT(*) FROM answer_cache WHERE scope='property'")).scalar_one(), 0)
 
     def test_changed_caption_revision_removes_old_evidence_and_observation(self):
         self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
