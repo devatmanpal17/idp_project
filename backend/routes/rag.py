@@ -34,6 +34,7 @@ from ml.scheduler import controller
 
 
 def interactive_request():
+    rag_engine.leases.expire()
     with controller.interactive_work():
         yield
 
@@ -84,10 +85,22 @@ def ingest_document(req: IngestDocumentRequest) -> Dict[str, Any]:
 def ask_lesson(req: AskRequest) -> Dict[str, Any]:
     try:
         active_document_id = req.document_id
+        answer_key = None
         if req.source_type == 'video':
-            if not active_document_id:
+            if req.learner_key and req.video_key:
+                active_document_id = None
+            elif not active_document_id:
                 raise ValueError('Video questions require an observation-tracked document.')
-            rag_engine.vectors.document(active_document_id)
+            if active_document_id:
+                rag_engine.vectors.document(active_document_id)
+            cache_scope = (f'scoped:{req.learner_key}|{req.video_key}'
+                           if req.learner_key and req.video_key else active_document_id)
+            if cache_scope and not req.history and not rag_engine.leases.has_open(cache_scope):
+                answer_key = rag_engine.answer_cache.key(
+                    req.question, cache_scope, llm_service.model, req.top_k, req.topic)
+                cached_answer = rag_engine.answer_cache.get(answer_key, cache_scope)
+                if cached_answer is not None:
+                    return cached_answer
         if req.transcript_context and req.source_type != 'video':
             _require_source_words(req.transcript_context, req.source_type, 8)
             indexed = rag_engine.ingest_transcript(
@@ -104,6 +117,8 @@ def ask_lesson(req: AskRequest) -> Dict[str, Any]:
         chunks = rag_engine.retrieve(
             req.question, topic=req.topic, top_k=req.top_k,
             document_id=active_document_id,
+            learner_key=req.learner_key if req.source_type == 'video' else None,
+            video_key=req.video_key if req.source_type == 'video' else None,
         )
         answer = llm_service.answer_with_rag(
             req.question,
@@ -111,14 +126,31 @@ def ask_lesson(req: AskRequest) -> Dict[str, Any]:
             req.topic or "Current lesson",
             history=[turn.model_dump() for turn in req.history],
         )
+        if req.source_type == 'video' and active_document_id and rag_engine.leases.would_hide(
+            req.question, active_document_id, req.top_k, req.topic
+        ):
+            answer += '\n\nSome lecture material is locked until the quiz is submitted.'
+        if req.source_type == 'video' and req.learner_key and req.video_key and rag_engine.leases.would_hide_scoped(
+            req.question, req.learner_key, req.video_key, req.top_k, req.topic
+        ):
+            answer += '\n\nSome lecture material is locked until the quiz is submitted.'
         cited_sources = [
             chunk for chunk in chunks if f"[{chunk['chunk_id']}]" in answer
         ]
-        return {
+        response = {
             "answer": answer,
             "active_provider": llm_service._last_provider_used,
             "sources": cited_sources,
         }
+        if answer_key is not None:
+            import json
+            vector_key = json.dumps([rag_engine.model_version,
+                ' '.join(f'{req.topic or ""} {req.question}'.split())])
+            query_vector = rag_engine.query_vector_cache.get(vector_key)
+            if query_vector is not None:
+                rag_engine.answer_cache.put(answer_key, cache_scope,
+                    query_vector, req.top_k, chunks, response)
+        return response
     except Exception as exc:
         raise _service_error(exc) from exc
 
@@ -127,6 +159,11 @@ def ask_lesson(req: AskRequest) -> Dict[str, Any]:
 def summarize_page(req: SummarizeRequest) -> Dict[str, Any]:
     try:
         if req.source_type == 'video':
+            if req.learner_key and req.video_key:
+                chunks = rag_engine.retrieve('main ideas explanation summary',
+                    learner_key=req.learner_key, video_key=req.video_key, top_k=10)
+                return {'summary': llm_service.summarize_with_rag(req.topic, chunks),
+                        'active_provider': llm_service._last_provider_used, 'sources': chunks}
             if not req.document_id:
                 raise ValueError('Video summaries require an observation-tracked document.')
             rag_engine.vectors.document(req.document_id)
@@ -184,10 +221,13 @@ def generate_quiz(req: GenerateQuizRequest) -> Dict[str, Any]:
     try:
         active_document_id = req.document_id
         if req.source_type == 'video':
-            if not active_document_id:
+            if req.learner_key and req.video_key:
+                active_document_id = None
+            elif not active_document_id:
                 _require_source_words(req.source_context or '', 'video', max(50, req.question_count * 15))
                 raise ValueError('Video quizzes require an observation-tracked document.')
-            rag_engine.vectors.document(active_document_id)
+            if active_document_id:
+                rag_engine.vectors.document(active_document_id)
         if req.source_context and req.source_type != 'video':
             _require_source_words(
                 req.source_context, req.source_type, max(50, req.question_count * 15)
@@ -208,6 +248,8 @@ def generate_quiz(req: GenerateQuizRequest) -> Dict[str, Any]:
         chunks = rag_engine.retrieve(
             req.topic, topic=req.topic, top_k=8, document_id=active_document_id,
             require_topic=active_document_id is None,
+            learner_key=req.learner_key if req.source_type == 'video' else None,
+            video_key=req.video_key if req.source_type == 'video' else None,
         )
         if not chunks:
             raise ValueError(
@@ -228,6 +270,11 @@ def generate_quiz(req: GenerateQuizRequest) -> Dict[str, Any]:
             count=req.question_count,
         )
         quiz_id = quiz_analytics.save_quiz(req.topic, questions)
+        if req.source_type == 'video':
+            if req.learner_key and req.video_key:
+                rag_engine.leases.open_scoped(quiz_id, req.learner_key, req.video_key, questions)
+            else:
+                rag_engine.leases.open(quiz_id, active_document_id, questions)
     except Exception as exc:
         raise _service_error(exc) from exc
 
@@ -344,6 +391,7 @@ def evaluate_quiz(req: EvaluateQuizRequest) -> Dict[str, Any]:
         question_count=len(questions),
         details=evaluations,
     )
+    rag_engine.leases.close(req.quiz_id)
     # Assessment outcomes change recall-based cache admission priorities.
     rag_engine.invalidate_cache()
     return {
@@ -372,3 +420,8 @@ def evaluate_quiz(req: EvaluateQuizRequest) -> Dict[str, Any]:
 @router.post("/api/rag/stream-transcript")
 def stream_transcript(req: StreamTranscriptRequest) -> Dict[str, Any]:
     raise HTTPException(status_code=422, detail='Legacy timestamp-only capture is disabled. Use /api/vectors/transcript and /api/observation/intervals.')
+
+
+@router.post('/api/rag/abandon-quiz/{quiz_id}')
+def abandon_quiz(quiz_id: str) -> Dict[str, Any]:
+    return {'restored_chunks': rag_engine.leases.close(quiz_id)}

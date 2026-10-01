@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Literal
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from .selective_repair import repair_questions
+from .residency import residency
 
 
 class LLMConfigurationError(RuntimeError):
@@ -189,7 +190,7 @@ class LLMService:
                 "temperature": 0.1,
                 "num_predict": 2048 if schema else 500,
             },
-            "keep_alive": "10m",
+            "keep_alive": residency.keep_alive(self.model),
         }
         if schema:
             payload["format"] = schema

@@ -32,7 +32,33 @@ async function apiRequest(path, init = {}) {
   return response.json();
 }
 
+let learnerKeyPromise;
+function learnerKey() {
+  if (!learnerKeyPromise) learnerKeyPromise = (async () => {
+    const key = 'chaigaram-learner-key';
+    const saved = (await chrome.storage.local.get(key))[key];
+    if (saved) return saved;
+    const created = crypto.randomUUID();
+    await chrome.storage.local.set({[key]: created});
+    return created;
+  })();
+  return learnerKeyPromise;
+}
+
+const scopeQueues = new Map();
+function serialScope(payload, action) {
+  const scope = `${payload.learner_key}|${payload.video_key}`;
+  const previous = scopeQueues.get(scope) || Promise.resolve();
+  const next = previous.catch(() => {}).then(() => action(`chaigaram-sequence:${scope}`));
+  scopeQueues.set(scope, next);
+  void next.finally(() => {
+    if (scopeQueues.get(scope) === next) scopeQueues.delete(scope);
+  }).catch(() => {});
+  return next;
+}
+
 const handlers = {
+  LEARNER_KEY: learnerKey,
   TRANSCRIPT: payload => apiRequest('/api/vectors/transcript', {method:'POST',body:JSON.stringify(payload)}),
   OBSERVE: payload => apiRequest('/api/observation/intervals', {method:'POST',body:JSON.stringify(payload)}),
   SPECULATE: payload => apiRequest('/api/vectors/speculate', {method:'POST',body:JSON.stringify(payload)}),
@@ -58,6 +84,27 @@ const handlers = {
     method: "POST",
     body: JSON.stringify(payload),
   }),
+  ABANDON: (payload) => apiRequest(`/api/rag/abandon-quiz/${encodeURIComponent(payload.quiz_id)}`, {
+    method: "POST",
+  }),
+  PLAYER_STATE: payload => apiRequest('/api/runtime/player-state', {
+    method: 'POST', body: JSON.stringify(payload),
+  }),
+  F1_SEAL: payload => serialScope(payload, async key => {
+    const result = await apiRequest('/api/f1/seal', {method:'POST',body:JSON.stringify(payload)});
+    const previous = Number((await chrome.storage.local.get(key))[key] || 0);
+    await chrome.storage.local.set({[key]: Math.max(previous, Number(result.last_batch_seq || 0))});
+    return result;
+  }),
+  F1_INTERVALS: payload => serialScope(payload, async key => {
+    const previous = Number((await chrome.storage.local.get(key))[key] || 0);
+    const sequence = Math.max(Date.now(), previous + 1, Number(payload.batch_seq || 0));
+    // Persist before sending: retries after a lost response always consume a new sequence.
+    await chrome.storage.local.set({[key]: sequence});
+    return apiRequest('/api/f1/intervals', {method:'POST',
+      body:JSON.stringify({...payload, batch_seq: sequence})});
+  }),
+  F1_STATUS: () => apiRequest('/api/f1/status'),
   TOPIC_STATE: (payload) => apiRequest(`/api/learning/topic-state?topic=${encodeURIComponent(payload.topic)}`),
   JOB_START: (payload) => apiRequest("/api/jobs", {
     method: "POST",

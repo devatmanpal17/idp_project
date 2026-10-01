@@ -10,12 +10,12 @@ const source = fs.readFileSync(require.resolve('../extension/content.js'), 'utf8
   .replace(/  buildOverlay\(\);\s+beginCapture\(\);\s*\}\)\(\);\s*$/,
     '  globalThis.testAPI = {state, runAI, syncMedia, ensureObservation};\n})();');
 
-function browser(handler, storage = {}) {
-  const video = { paused: true, readyState: 4, currentTime: 10 };
+function browser(handler, storage = {}, url = 'https://example.test/lesson') {
+  const video = { paused: true, readyState: 4, currentTime: 10, duration: 12 };
   const context = vm.createContext({
-    URL, crypto: { randomUUID }, setTimeout: fn => fn(),
+    URL, crypto: { randomUUID }, setTimeout: fn => fn(), clearTimeout: () => {},
     ChaiObservation: { attach: () => ({ detach() {}, evidence: 'rendered-frame', tracker: { intervals: [] } }) },
-    location: { href: 'https://example.test/lesson', hostname: 'example.test' },
+    location: { href: url, hostname: new URL(url).hostname },
     document: {
       hidden: false, title: 'Test lesson', getElementById: () => null,
       querySelector: selector => selector === '#movie_player video.html5-main-video' ? video : null,
@@ -109,4 +109,28 @@ test('reusing a video element for a different source clears its captions and obs
   assert.equal(api.state.documentId, null);
   assert.equal(api.state.mediaCaptions.length, 0);
   assert.equal(api.state.observation.tracker.intervals.length, 0);
+});
+
+test('YouTube full captions seal through the durable job before intervals upload', async () => {
+  const calls = [];
+  const api = browser(({type, payload}) => {
+    calls.push([type, payload]);
+    if (type === 'LEARNER_KEY') return 'learner-uuid';
+    if (type === 'JOB_START') return {job_id: payload.request_id};
+    if (type === 'JOB_STATUS') return {status: 'succeeded',
+      result: {sealed_added: 1, last_batch_seq: 40}};
+    return {accepted: 1};
+  }, {}, 'https://www.youtube.com/watch?v=video123');
+  api.state.scopedEnabled = true;
+  api.state.mediaSignature = '';
+  api.state.observation.tracker.pending = [{start: 0, end: 1, wall_ms: 1000, rate: 1}];
+  await api.syncMedia();
+  const started = calls.find(([type]) => type === 'JOB_START')[1];
+  assert.equal(started.operation, 'seal');
+  assert.equal(started.payload.video_key, 'youtube:video123');
+  assert.equal(started.payload.cues.length, api.state.mediaCaptions.length);
+  const interval = calls.find(([type]) => type === 'F1_INTERVALS')[1];
+  assert.ok(interval.batch_seq > 40);
+  assert.ok(calls.findIndex(([type]) => type === 'JOB_STATUS') <
+    calls.findIndex(([type]) => type === 'F1_INTERVALS'));
 });

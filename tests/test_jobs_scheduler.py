@@ -100,6 +100,17 @@ class JobWorkerTests(unittest.TestCase):
             jobs.run_job(job)
         self.assertEqual(self.store.get(job)['result'], result)
 
+    def test_seal_job_accepts_full_cues_and_returns_sequence_checkpoint(self):
+        payload = {'learner_key': 'learner', 'video_key': 'youtube:example',
+                   'duration': 3, 'cues': [{'start': 0, 'end': 1, 'text': 'One cue.'}]}
+        with patch.object(jobs._executor, 'submit'):
+            created = jobs.create_job(jobs.AIJobRequest(
+                request_id='request-seal-001', operation='seal', payload=payload))
+        result = {'sealed_added': 1, 'last_batch_seq': 9}
+        with patch.dict(jobs.HANDLERS, seal=lambda req: result):
+            jobs.run_job(created['job_id'])
+        self.assertEqual(self.store.get(created['job_id'])['result'], result)
+
     def test_cancelled_document_cannot_publish_late_result_or_resume(self):
         job, _ = self.store.create('ask', {'document_id': 'deleted', 'question': 'private content'})
         self.store.claim(job)

@@ -1,6 +1,6 @@
 """Observation and speculative-vector API. Never return sealed text or vectors."""
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from fastapi import APIRouter
 from ml import rag_engine
 from ml.temporal import Caption, Interval, MAX_MEDIA_MS
@@ -8,6 +8,65 @@ from ml.metrics import metrics
 from .rag import _service_error
 
 router = APIRouter()
+
+
+class ScopedInput(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False, extra='forbid')
+
+
+class ScopedCue(ScopedInput):
+    start: float = Field(ge=0)
+    end: float = Field(gt=0)
+    text: str = Field(min_length=1)
+
+    @model_validator(mode='after')
+    def ordered(self):
+        if self.end <= self.start:
+            raise ValueError('Caption end must be after start.')
+        return self
+
+
+class SealRequest(ScopedInput):
+    learner_key: str = Field(min_length=1, max_length=100)
+    video_key: str = Field(min_length=1, max_length=200)
+    cues: list[ScopedCue] = Field(min_length=1, max_length=20000)
+    duration: float = Field(gt=0)
+
+
+class RenderedInterval(ScopedInput):
+    start: float = Field(ge=0)
+    end: float = Field(gt=0)
+    wall_ms: float = Field(gt=0)
+    rate: float = Field(gt=0, le=16)
+
+
+class ScopedIntervalsRequest(ScopedInput):
+    learner_key: str = Field(min_length=1, max_length=100)
+    video_key: str = Field(min_length=1, max_length=200)
+    batch_seq: int = Field(ge=0)
+    intervals: list[RenderedInterval] = Field(max_length=10000)
+
+
+@router.post('/api/f1/seal')
+def seal_scoped(req: SealRequest):
+    try:
+        if not rag_engine.scoped.enabled:
+            raise ValueError('F1 scoped indexing is disabled.')
+        return rag_engine.scoped.seal(req.learner_key, req.video_key,
+            [cue.model_dump() for cue in req.cues], req.duration)
+    except Exception as exc:
+        raise _service_error(exc) from exc
+
+
+@router.post('/api/f1/intervals')
+def scoped_intervals(req: ScopedIntervalsRequest):
+    try:
+        if not rag_engine.scoped.enabled:
+            raise ValueError('F1 scoped indexing is disabled.')
+        return rag_engine.scoped.intervals(req.learner_key, req.video_key, req.batch_seq,
+            [item.model_dump() for item in req.intervals])
+    except Exception as exc:
+        raise _service_error(exc) from exc
 
 
 class TranscriptRequest(BaseModel):
@@ -52,6 +111,22 @@ def diagnostics():
             'jobs': store.diagnostics(), 'scheduler': getattr(controller, 'last_decision', {}),
             'cache': rag_engine.hot_cache.status(),
             'query_vector_cache': rag_engine.query_vector_cache.status()}
+
+
+@router.get('/api/f1/status')
+def f1_status():
+    from ml.residency import residency
+    from sqlalchemy import text
+    with rag_engine.scoped.engine.connect() as db:
+        scoped_counts = dict(db.execute(text('SELECT state,COUNT(*) FROM scoped_chunks GROUP BY state')).all())
+    return {'documents': rag_engine.vectors.diagnostics(),
+            'enabled': rag_engine.scoped.enabled,
+            'scoped_counts': scoped_counts,
+            'active_vectors': rag_engine.count,
+            'open_leases': rag_engine.leases.status(),
+            'cache': rag_engine.answer_cache.status(),
+            'residency': residency.status(),
+            'transfer': rag_engine.scoped.transfer.stats}
 
 
 @router.delete('/api/vectors/documents/{document_id}')

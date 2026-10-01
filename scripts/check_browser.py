@@ -20,7 +20,7 @@ import imageio_ffmpeg
 from PIL import Image, ImageDraw, ImageOps
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / 'patent/results'
+OUTPUT = Path(os.getenv('CHAI_BROWSER_CHECK_OUTPUT', str(ROOT / 'patent/results')))
 LESSON = ('Binary search works on a sorted sequence and repeatedly cuts the search interval in half. '
           'It compares the middle value with the target value. If the target is smaller, the search '
           'continues in the left half. If the target is larger, it continues in the right half. '
