@@ -1,21 +1,23 @@
 /* Pure interval tracker plus HTMLVideoElement adapter. No timestamp watermark proof. */
 (() => {
   class ObservationTracker {
-    constructor() { this.intervals = []; this.pending = []; this.previous = null; }
-    breakTraversal() { this.previous = null; }
+    constructor() { this.intervals = []; this.pending = []; this.previous = null; this.runStart = null; }
+    breakTraversal() { this.previous = null; this.runStart = null; }
     sample(mediaMs, wallMs, rate = 1, eligible = true) {
       if (![mediaMs, wallMs, rate].every(Number.isFinite) || rate <= 0 || !eligible) {
         this.breakTraversal(); return;
       }
       const last = this.previous;
       this.previous = { mediaMs, wallMs, rate };
-      if (!last) return;
+      if (!last) { this.runStart = mediaMs; return; }
       const elapsed = wallMs - last.wallMs, delta = mediaMs - last.mediaMs;
       // Bound callback stalls to 1s and media movement to elapsed time plus 1 frame
       // (50ms permits <=20fps material). Never merge a positive seek gap.
       if (elapsed <= 0 || elapsed > 1000 || delta <= 0 || last.rate !== rate ||
-          delta > elapsed * rate + 50) return;
-      this.add(Math.ceil(last.mediaMs), Math.floor(mediaMs));
+          delta > elapsed * rate + 50) { this.runStart = mediaMs; return; }
+      // Round the validated traversal's outer bounds once. Rounding each
+      // frame pair separately invents 1ms holes at fractional frame times.
+      this.add(Math.ceil(this.runStart), Math.floor(mediaMs));
       const tail = this.pending.at(-1);
       if (tail && tail.end === last.mediaMs / 1000 && tail.rate === rate) {
         tail.end = mediaMs / 1000;
@@ -49,7 +51,11 @@
     const eligible = () => !video.paused && !video.seeking && !video.ended &&
       video.readyState >= 2 && visible() && allowed();
     const frame = (now, metadata) => {
-      tracker.sample(metadata.mediaTime * 1000, now, video.playbackRate, eligible());
+      // Submission and callback clocks can jitter when frames are queued.
+      // The expected display clock follows the frame's presentation schedule.
+      const wall = Number.isFinite(metadata.expectedDisplayTime) ? metadata.expectedDisplayTime
+        : Number.isFinite(metadata.presentationTime) ? metadata.presentationTime : now;
+      tracker.sample(metadata.mediaTime * 1000, wall, video.playbackRate, eligible());
       if (!stopped) frameId = video.requestVideoFrameCallback(frame);
     };
     // Fallback requires decoded-frame counter advancement as well as playback events.

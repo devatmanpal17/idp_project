@@ -1,3 +1,4 @@
+import { chartAxis } from "@/lib/chart-axis";
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -42,7 +43,6 @@ import {
   PanelHeader,
   StatCard,
   MasteryPill,
-  chartAxis,
   ChartTooltipBox,
   EmptyState,
 } from "@/components/chaigaram/primitives";

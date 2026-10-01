@@ -42,6 +42,7 @@
     sequence: 0,
     mediaSignature: '',
     scopedSequence: 0,
+    scopedRevision: null,
     scopedEnabled: null,
     syncPromise: null,
     visibleCue: null,
@@ -189,6 +190,7 @@
     state.mediaSession = crypto.randomUUID(); state.sequence = 0;
     state.mediaSignature = ''; state.visibleCue = null; state.officialLoaded = false;
     state.scopedSequence = 0;
+    state.scopedRevision = null;
     state.pageKey = nextKey;
     state.transcript = [];
     state.lastCaption = "";
@@ -367,6 +369,7 @@
       state.mediaCaptions = []; state.documentId = null; state.mediaSignature = '';
       state.mediaSession = crypto.randomUUID(); state.sequence = 0;
       state.scopedSequence = 0;
+      state.scopedRevision = null;
       state.visibleCue = null; state.officialLoaded = false; state.lastCaption = '';
     }
     state.observation?.detach();
@@ -403,13 +406,14 @@
               ? video.duration : Math.max(...captions.map(cue => cue.end_ms)) / 1000});
           if (!stillCurrent()) return;
           state.scopedSequence = Math.max(state.scopedSequence, sealed.last_batch_seq || 0);
+          state.scopedRevision = sealed.revision;
           state.mediaSignature = signature;
         }
         const pending = observation.tracker.pending.splice(0, 10000);
         if (pending.length) {
           try {
             await send('F1_INTERVALS', {learner_key: key, video_key: videoKey,
-              batch_seq: ++state.scopedSequence, intervals: pending});
+              revision: state.scopedRevision, batch_seq: ++state.scopedSequence, intervals: pending});
           } catch (error) {
             observation.tracker.pending.unshift(...pending);
             throw error;

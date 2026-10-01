@@ -11,6 +11,11 @@ short pause trials, not a simulated 10-minute viewing session.
 
 The generator uses NumPy's seeded normal distribution to make unit-length
 64-dimensional corpus and query vectors at 1k, 10k, and 100k index sizes.
+Score, masking, and partition scratch matrices are evaluated in batches of 32
+queries. This bounds scratch memory by the batch rather than the entire workload;
+the JSON metadata records the batch size. A regression compares the metrics and
+fifth-score boundaries with a dense reference. Timing results from older dense
+runs and batched runs describe different harness implementations.
 The lease simulation masks vectors with cosine at least 0.97 to a selected
 evidence vector and compares top five leakage with an unmasked index and a
 globally disabled assistant. It also records retrievable query fraction and

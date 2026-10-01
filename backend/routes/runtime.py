@@ -2,7 +2,8 @@
 from typing import Literal
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from ..models import LearnerKey, VideoKey
 
 from ml.residency import residency
 
@@ -10,8 +11,9 @@ router = APIRouter()
 
 
 class PlayerState(BaseModel):
-    learner_key: str = Field(min_length=1, max_length=100)
-    video_key: str = Field(min_length=1, max_length=200)
+    model_config = ConfigDict(allow_inf_nan=False, extra='forbid')
+    learner_key: LearnerKey
+    video_key: VideoKey
     state: Literal['PLAYING', 'PAUSED', 'SEEKING', 'HIDDEN', 'ENDED']
     media_time: float = Field(ge=0)
     ts: float

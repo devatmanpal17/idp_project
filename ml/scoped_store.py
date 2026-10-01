@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import struct
 from datetime import datetime, timezone
@@ -21,7 +22,16 @@ def normal(value):
 
 
 def blob(vector):
-    return struct.pack(f'<{len(vector)}f', *vector)
+    if not vector or any(isinstance(value, bool) or not isinstance(value, (int, float))
+                         or not math.isfinite(value) for value in vector):
+        raise ValueError('Embedder returned an invalid vector.')
+    try:
+        raw = struct.pack(f'<{len(vector)}f', *vector)
+    except (OverflowError, struct.error) as exc:
+        raise ValueError('Embedding components must fit finite float32 values.') from exc
+    if any(not math.isfinite(value) for value in unblob(raw)):
+        raise ValueError('Embedding components must fit finite float32 values.')
+    return raw
 
 
 def unblob(raw):
@@ -119,7 +129,8 @@ class ScopedStore:
     def _make_chunk(self, cues, granularity, parent):
         value = normal(' '.join(c['text'] for c in cues))
         return {'granularity': granularity, 'parent': parent,
-                'start': cues[0]['start_ms'], 'end': cues[-1]['end_ms'],
+                'start': min(c['start_ms'] for c in cues),
+                'end': max(c['end_ms'] for c in cues),
                 'text': value, 'hash': hashlib.sha256(value.encode()).hexdigest()}
 
     def seal(self, learner, video, cues, duration):
@@ -132,14 +143,19 @@ class ScopedStore:
         if duration_ms <= 0:
             raise ValueError('Video duration must be positive.')
         with self.lock:
-            revision = hashlib.sha256(json.dumps(cues, sort_keys=True).encode()).hexdigest()
+            revision = hashlib.sha256(json.dumps([cues, duration_ms], sort_keys=True).encode()).hexdigest()
             revision_changed = False
+            revoked = []
             with self.engine.begin() as db:
                 existing = self._scope(db, learner, video)
                 old_revision = db.execute(text("""SELECT revision FROM scoped_revisions WHERE
                     learner_key=:learner AND video_key=:video"""),
                     {'learner': learner, 'video': video}).scalar()
-                if existing and old_revision and old_revision != revision:
+                old_model = db.execute(text("""SELECT 1 FROM scoped_chunks WHERE
+                    learner_key=:learner AND video_key=:video AND embed_model<>:model LIMIT 1"""),
+                    {'learner': learner, 'video': video, 'model': self.rag.model_version}).scalar()
+                track_changed = bool(existing and old_revision and old_revision != revision)
+                if track_changed or old_model:
                     if hasattr(self.rag, 'leases') and self.rag.leases.has_open(f'scoped:{learner}|{video}'):
                         raise ValueError('Submit or abandon the open quiz before changing this caption track.')
                     revision_changed = True
@@ -152,10 +168,24 @@ class ScopedStore:
                                {'learner': learner, 'video': video})
                     db.execute(text("DELETE FROM scoped_cues WHERE learner_key=:learner AND video_key=:video"),
                                {'learner': learner, 'video': video})
-                    db.execute(text("""UPDATE scoped_videos SET intervals_json='[]',last_seq=-1,
-                        promotion_seq=0,duration_ms=:duration
-                        WHERE learner_key=:learner AND video_key=:video"""),
-                        {'learner': learner, 'video': video, 'duration': duration_ms})
+                    if track_changed:
+                        # The reset sequence belongs to the new caption revision.
+                        db.execute(text("DELETE FROM scoped_interval_batches WHERE learner_key=:learner AND video_key=:video"),
+                                   {'learner': learner, 'video': video})
+                        db.execute(text("""UPDATE scoped_videos SET intervals_json='[]',last_seq=-1,
+                            promotion_seq=0,duration_ms=:duration
+                            WHERE learner_key=:learner AND video_key=:video"""),
+                            {'learner': learner, 'video': video, 'duration': duration_ms})
+                        # A source revision also invalidates observation transferred from it.
+                        revoked = db.execute(text("""SELECT chroma_id,video_key FROM scoped_chunks
+                            WHERE learner_key=:learner AND source_video_key=:video
+                            AND provenance='transferred'"""),
+                            {'learner': learner, 'video': video}).all()
+                        db.execute(text("""UPDATE scoped_chunks SET state='SEALED',
+                            provenance='observed',source_video_key=NULL,promotion_seq=0,updated_at=:now
+                            WHERE learner_key=:learner AND source_video_key=:video
+                            AND provenance='transferred'"""),
+                            {'learner': learner, 'video': video, 'now': stamp()})
                 if not existing:
                     db.execute(text("""INSERT INTO scoped_videos
                         (learner_key,video_key,duration_ms) VALUES (:learner,:video,:duration)"""),
@@ -174,8 +204,12 @@ class ScopedStore:
                              'start': int(cue['start'] * 1000), 'end': int(cue['end'] * 1000),
                              'content': normal(cue['text'])})
             if revision_changed:
+                if revoked:
+                    self.rag.collection.delete(ids=[row[0] for row in revoked])
                 if hasattr(self.rag, 'answer_cache'):
                     self.rag.answer_cache.bump_epoch(f'scoped:{learner}|{video}')
+                    for affected_video in {row[1] for row in revoked}:
+                        self.rag.answer_cache.bump_epoch(f'scoped:{learner}|{affected_video}')
                 self.rag.invalidate_cache()
             prepared = []
             known_vectors = {}
@@ -202,6 +236,10 @@ class ScopedStore:
                     missing.setdefault(piece['hash'], piece['text'])
                 prepared.append((piece, parent_id, old_vector is not None))
             batch_size = max(1, int(os.getenv('F1_EMBED_BATCH_SIZE', '32')))
+            with self.engine.connect() as db:
+                sample = db.execute(text("""SELECT vector FROM scoped_vector_blobs
+                    WHERE embed_model=:model LIMIT 1"""), {'model': self.rag.model_version}).scalar()
+            dimension = len(sample) // 4 if sample else None
             unknown = list(missing.items())
             for offset in range(0, len(unknown), batch_size):
                 batch = unknown[offset:offset + batch_size]
@@ -211,6 +249,9 @@ class ScopedStore:
                 with self.engine.begin() as db:
                     for (content_hash, _), vector in zip(batch, vectors):
                         raw = blob(vector)
+                        if dimension is not None and len(vector) != dimension:
+                            raise ValueError('Embedder returned inconsistent vector dimensions.')
+                        dimension = len(vector)
                         known_vectors[content_hash] = raw
                         db.execute(text('''INSERT OR IGNORE INTO scoped_vector_blobs
                             VALUES (:hash,:model,:vector)'''),
@@ -235,20 +276,30 @@ class ScopedStore:
             if hasattr(self.rag, 'leases'):
                 self.rag.leases.refresh_scoped(learner)
             self.promote(learner, video)
+            for affected_video in {row[1] for row in revoked}:
+                self.promote(learner, affected_video)
             if hasattr(self, 'transfer'):
                 self.transfer.on_seal(learner, video)
             with self.engine.connect() as db:
                 last_seq = self._scope(db, learner, video)['last_seq']
             return {'sealed_added': added, 'vectors_reused': reused,
+                    'revision': revision,
                     'last_batch_seq': last_seq,
                     'counts': self.status(learner, video)['counts']}
 
-    def intervals(self, learner, video, seq, intervals):
+    def intervals(self, learner, video, seq, intervals, revision=None):
         with self.lock:
             with self.engine.connect() as db:
                 previous = self._scope(db, learner, video)
             if not previous:
                 raise ValueError('Seal this video before uploading intervals.')
+            if revision is not None:
+                with self.engine.connect() as db:
+                    current_revision = db.execute(text("""SELECT revision FROM scoped_revisions
+                        WHERE learner_key=:learner AND video_key=:video"""),
+                        {'learner': learner, 'video': video}).scalar()
+                if revision != current_revision:
+                    raise ValueError('Caption revision changed; seal again before uploading intervals.')
             if seq <= previous['last_seq']:
                 with self.engine.begin() as db:
                     db.execute(text("""INSERT INTO scoped_interval_rejections VALUES
@@ -287,8 +338,8 @@ class ScopedStore:
                 if not scope:
                     return 0
                 rows = db.execute(text("""SELECT * FROM scoped_chunks WHERE learner_key=:learner
-                    AND video_key=:video AND state='SEALED'"""),
-                    {'learner': learner, 'video': video}).mappings().all()
+                    AND video_key=:video AND state='SEALED' AND embed_model=:model"""),
+                    {'learner': learner, 'video': video, 'model': self.rag.model_version}).mappings().all()
             observed = json.loads(scope['intervals_json'])
             promoted = 0
             for row in rows:
@@ -320,6 +371,8 @@ class ScopedStore:
             return promoted
 
     def _upsert(self, row):
+        if row['embed_model'] != self.rag.model_version:
+            return
         self.rag.collection.upsert(ids=[row['chroma_id']], documents=[row['content']],
             embeddings=[unblob(row['vector'])], metadatas=[{
                 'learner_key': row['learner_key'], 'video_key': row['video_key'],
@@ -332,14 +385,16 @@ class ScopedStore:
             }])
 
     def recover(self):
-        with self.lock, self.engine.connect() as db:
-            rows = db.execute(text('SELECT * FROM scoped_chunks')).mappings().all()
-        existing = set(self.rag.collection.get(include=[])['ids'])
-        for row in rows:
-            if row['state'] == 'ACTIVE' and row['chroma_id'] not in existing:
-                self._upsert(row)
-            elif row['state'] != 'ACTIVE' and row['chroma_id'] in existing:
-                self.rag.collection.delete(ids=[row['chroma_id']])
+        with self.lock:
+            with self.engine.connect() as db:
+                rows = db.execute(text('SELECT * FROM scoped_chunks')).mappings().all()
+            existing = set(self.rag.collection.get(include=[])['ids'])
+            for row in rows:
+                searchable = row['state'] == 'ACTIVE' and row['embed_model'] == self.rag.model_version
+                if searchable and row['chroma_id'] not in existing:
+                    self._upsert(row)
+                elif not searchable and row['chroma_id'] in existing:
+                    self.rag.collection.delete(ids=[row['chroma_id']])
 
     def status(self, learner, video):
         with self.engine.connect() as db:
@@ -353,8 +408,9 @@ class ScopedStore:
         with self.lock:
             with self.engine.connect() as db:
                 rows = [dict(row) for row in db.execute(text("""SELECT * FROM scoped_chunks
-                    WHERE learner_key=:learner AND video_key=:video AND state='ACTIVE'"""),
-                    {'learner': learner, 'video': video}).mappings()]
+                    WHERE learner_key=:learner AND video_key=:video AND state='ACTIVE'
+                    AND embed_model=:model"""),
+                    {'learner': learner, 'video': video, 'model': self.rag.model_version}).mappings()]
             if not rows:
                 return []
             query_text = normal(f'{topic or ""} {query}')

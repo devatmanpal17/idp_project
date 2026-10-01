@@ -36,3 +36,10 @@ With automatic capture enabled, available timestamped caption tracks, including 
 The backend persists AI jobs and resumes queued or interrupted work after restart. Retrying the same operation with an unchanged payload after a lost extension connection reuses its request ID. Changed questions, source context, or quiz parameters create a new request. A page reload does not automatically reopen or restore the assistant's displayed response.
 
 Interactive video actions finish embedding the observed caption batches before generation. Background speculation uses a separate worker and yields between embedding calls when interactive work is active. An embedding call already in progress cannot be interrupted.
+
+The YouTube F1 path binds observation uploads to the revision hash returned by
+its durable sealing job. Reload the extension after updating the backend: old
+clients without a revision are rejected, and must recapture the track. Playback
+tracking uses frame display timestamps when available and rounds each validated
+traversal's outer bounds once, preserving fractional frame continuity while
+keeping seek, hidden-playback, and callback-stall gaps separate.

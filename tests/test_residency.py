@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from ml.residency import ResidencyController
 
 
@@ -23,6 +24,19 @@ class FakeTransport:
 
 
 class ResidencyTests(unittest.TestCase):
+    def test_settings_switch_updates_the_residency_preload_model(self):
+        from backend.models import AIConfigRequest
+        from backend.routes import settings
+        from ml.llm_service import LLMService
+        transport = FakeTransport()
+        controller = ResidencyController(transport=transport, clock=lambda: 0)
+        service = LLMService()
+        with patch.object(settings, 'residency', controller), patch.object(settings, 'llm_service', service):
+            settings.set_ai_config(AIConfigRequest(model='replacement-model'))
+        controller.transition('PAUSED')
+        self.assertEqual(controller.llm, 'replacement-model')
+        self.assertEqual(transport.actions[0][:2], ('replacement-model', '-1'))
+
     def test_no_player_does_not_preload_and_latest_alias_is_resident(self):
         transport = FakeTransport()
         controller = ResidencyController(transport=transport, clock=lambda: 0)

@@ -25,7 +25,9 @@ if _env_path.exists():
     print(f"[ENV] GEMINI_API_KEY: {'[OK] configured' if os.environ.get('GEMINI_API_KEY') else '[NOT SET]'}")
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from .validation import request_validation_error
 
 from .routes.health import router as health_router
 from .routes.rag import router as rag_router
@@ -56,6 +58,7 @@ app = FastAPI(
     description="RAG vector search, LLM quiz generator, and learner signal intelligence.",
     version="3.0.0",
 )
+app.add_exception_handler(RequestValidationError, request_validation_error)
 
 # Enable CORS for local development
 app.add_middleware(

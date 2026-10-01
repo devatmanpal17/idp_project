@@ -2,6 +2,7 @@ import tempfile
 import unittest
 import json
 import random
+import os
 from pathlib import Path
 from unittest.mock import patch
 from sqlalchemy import create_engine, text
@@ -36,6 +37,21 @@ class ScopedStoreTests(unittest.TestCase):
     def tearDown(self):
         self.db.dispose()
         self.tmp.cleanup()
+
+    def test_production_model_version_resolves_the_requested_tag(self):
+        embedder = FakeEmbed()
+        embedder.model = 'embeddinggemma:study'
+        embedder.base_url = 'http://embedding.test'
+        for name, expected in [('embeddinggemma:study', 'embeddinggemma:study:wanted'),
+                               ('embeddinggemma:other', 'embeddinggemma:study:unresolved')]:
+            with self.subTest(available_tag=name), patch.dict(os.environ, {'OLLAMA_EMBED_VERSION': embedder.model}), \
+                 patch('ml.rag_engine.OllamaEmbeddings', return_value=embedder), \
+                 patch('ml.rag_engine.urllib.request.urlopen') as request:
+                request.return_value.__enter__.return_value.read.return_value = json.dumps({'models': [
+                    {'name': 'embeddinggemma:old', 'digest': 'wrong'},
+                    {'name': name, 'digest': 'wanted'}]}).encode()
+                restarted = RAGEngine(Path(self.tmp.name) / 'chroma', state_engine=self.db)
+                self.assertEqual(restarted.model_version, expected)
 
     def test_seal_observe_micro_then_macro_and_reconcile(self):
         first = self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
@@ -95,6 +111,169 @@ class ScopedStoreTests(unittest.TestCase):
             [{'start': 0, 'end': 12, 'wall_ms': 100, 'rate': 1}])
         self.assertEqual(result['promoted'], 0)
         self.assertEqual(result['rejected'], ['implausible_media_speed'])
+
+    def test_invalid_embedding_batch_is_not_checkpointed_or_searchable(self):
+        for bad in ([], [float('nan'), 1], [float('inf'), 1], [1e100, 1], [True, 1]):
+            with self.subTest(vector=bad), patch.object(self.embed, 'embed',
+                side_effect=lambda texts: [bad for _ in texts]):
+                with self.assertRaises(ValueError):
+                    self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
+            with self.db.connect() as db:
+                self.assertEqual(db.execute(text('SELECT COUNT(*) FROM scoped_vector_blobs')).scalar(), 0)
+                self.assertEqual(db.execute(text('SELECT COUNT(*) FROM scoped_chunks')).scalar(), 0)
+        self.assertEqual(self.rag.count, 0)
+        # A subsequent valid batch still completes the same seal.
+        self.assertGreater(self.rag.scoped.seal(self.learner, self.video, self.cues, 12)['sealed_added'], 0)
+
+    def test_mixed_embedding_dimensions_roll_back_the_batch(self):
+        with patch.object(self.embed, 'embed',
+                          side_effect=lambda texts: [[1.0] * (i + 2) for i, _ in enumerate(texts)]):
+            with self.assertRaisesRegex(ValueError, 'inconsistent vector dimensions'):
+                self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
+        with self.db.connect() as db:
+            self.assertEqual(db.execute(text('SELECT COUNT(*) FROM scoped_vector_blobs')).scalar(), 0)
+            self.assertEqual(db.execute(text('SELECT COUNT(*) FROM scoped_chunks')).scalar(), 0)
+
+    def test_overlapping_cues_require_the_entire_caption_span(self):
+        cues = [{'start': 0, 'end': 10, 'text': 'The long caption contains material through ten seconds.'},
+                {'start': 1, 'end': 2, 'text': 'A separate short caption overlaps the long caption.'}]
+        self.rag.scoped.seal(self.learner, self.video, cues, 10)
+        self.rag.scoped.intervals(self.learner, self.video, 1,
+            [{'start': 0, 'end': 2, 'wall_ms': 2000, 'rate': 1}])
+        self.assertEqual(self.rag.scoped.retrieve(self.learner, self.video, 'caption'), [])
+
+    def test_caption_revision_can_reuse_an_interval_sequence(self):
+        self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
+        self.rag.scoped.intervals(self.learner, self.video, 1,
+            [{'start': 0, 'end': 12, 'wall_ms': 12000, 'rate': 1}])
+        changed = [{**cue, 'text': cue['text'] + ' revised'} for cue in self.cues]
+        self.rag.scoped.seal(self.learner, self.video, changed, 12)
+        result = self.rag.scoped.intervals(self.learner, self.video, 1,
+            [{'start': 0, 'end': 12, 'wall_ms': 12000, 'rate': 1}])
+        self.assertGreater(result['promoted'], 0)
+
+    def test_old_revision_intervals_cannot_unlock_replacement_captions(self):
+        original = self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
+        changed = [{**cue, 'text': cue['text'] + ' revised'} for cue in self.cues]
+        replacement = self.rag.scoped.seal(self.learner, self.video, changed, 12)
+        intervals = [{'start': 0, 'end': 12, 'wall_ms': 12000, 'rate': 1}]
+        with self.assertRaisesRegex(ValueError, 'revision changed'):
+            self.rag.scoped.intervals(self.learner, self.video, 1, intervals,
+                                      revision=original['revision'])
+        self.assertEqual(self.rag.scoped.retrieve(self.learner, self.video, 'lesson'), [])
+        self.assertGreater(self.rag.scoped.intervals(self.learner, self.video, 1, intervals,
+                           revision=replacement['revision'])['promoted'], 0)
+
+    def test_transfer_requires_observation_of_matching_source_cues(self):
+        text_a = ' '.join(f'opening{i}' for i in range(50))
+        text_b = ' '.join(f'ending{i}' for i in range(50))
+        source = [{'start': 0, 'end': 10, 'text': text_a},
+                  {'start': 10, 'end': 12, 'text': text_b}]
+        target = [{'start': 0, 'end': 1, 'text': text_a},
+                  {'start': 1, 'end': 3, 'text': text_b}]
+        self.rag.scoped.seal(self.learner, self.video, source, 12)
+        self.rag.scoped.intervals(self.learner, self.video, 1,
+            [{'start': 0, 'end': 4, 'wall_ms': 4000, 'rate': 1}])
+        self.rag.scoped.seal(self.learner, 'youtube:uneven', target, 3)
+        self.assertEqual(self.rag.scoped.retrieve(self.learner, 'youtube:uneven', 'opening'), [])
+        self.rag.scoped.intervals(self.learner, self.video, 2,
+            [{'start': 4, 'end': 10, 'wall_ms': 6000, 'rate': 1}])
+        found = self.rag.scoped.retrieve(self.learner, 'youtube:uneven', 'opening')
+        self.assertTrue(found)
+        self.assertTrue(all('ending0' not in item['snippet'] for item in found))
+
+    def test_source_revision_revokes_transferred_evidence(self):
+        self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
+        self.rag.scoped.intervals(self.learner, self.video, 1,
+            [{'start': 0, 'end': 12, 'wall_ms': 12000, 'rate': 1}])
+        self.rag.scoped.seal(self.learner, 'youtube:copy', self.cues, 12)
+        self.assertTrue(self.rag.scoped.retrieve(self.learner, 'youtube:copy', 'lesson'))
+        changed = [{**cue, 'text': f'Replacement unrelated botany caption {i}.'}
+                   for i, cue in enumerate(self.cues)]
+        self.rag.scoped.seal(self.learner, self.video, changed, 12)
+        self.assertEqual(self.rag.scoped.retrieve(self.learner, 'youtube:copy', 'lesson'), [])
+
+    def test_changed_embedding_model_does_not_reuse_old_scoped_vectors(self):
+        self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
+        self.rag.scoped.intervals(self.learner, self.video, 1,
+            [{'start': 0, 'end': 12, 'wall_ms': 12000, 'rate': 1}])
+        other_embed = FakeEmbed()
+        other_embed.model = 'different-scoped-test'
+        upgraded = RAGEngine(Path(self.tmp.name) / 'chroma', state_engine=self.db,
+                             embeddings=other_embed)
+        self.assertEqual(upgraded.count, 0)
+        self.assertEqual(upgraded.scoped.retrieve(self.learner, self.video, 'lesson'), [])
+        upgraded.scoped.seal(self.learner, self.video, self.cues, 12)
+        self.assertGreater(other_embed.calls, 0)
+        self.assertTrue(upgraded.scoped.retrieve(self.learner, self.video, 'lesson'))
+
+    def test_scoped_leases_survive_restart_and_restore_after_last_close(self):
+        self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
+        self.rag.scoped.intervals(self.learner, self.video, 1,
+            [{'start': 0, 'end': 12, 'wall_ms': 12000, 'rate': 1}])
+        chunks = self.rag.scoped.retrieve(self.learner, self.video, 'lesson')
+        questions = [{'citations': [chunks[0]['chunk_id']]}]
+        self.rag.leases.open_scoped('restart-a', self.learner, self.video, questions)
+        self.rag.leases.open_scoped('restart-b', self.learner, self.video, questions)
+        restarted = RAGEngine(Path(self.tmp.name) / 'chroma', state_engine=self.db,
+                             embeddings=self.embed)
+        self.assertEqual(restarted.scoped.retrieve(self.learner, self.video, 'lesson'), [])
+        restarted.leases.close('restart-a')
+        self.assertEqual(restarted.scoped.retrieve(self.learner, self.video, 'lesson'), [])
+        restarted.leases.close('restart-b')
+        self.assertEqual(restarted.scoped.retrieve(self.learner, self.video, 'lesson'), chunks)
+        with self.db.connect() as db:
+            self.assertEqual(db.execute(text('SELECT MAX(demote_refcount) FROM scoped_chunks')).scalar(), 0)
+
+    def test_leases_hide_counterparts_with_uneven_caption_timing(self):
+        source = [{'start': 0, 'end': 10, 'text': ' '.join(f'opening{i}' for i in range(50))},
+                  {'start': 10, 'end': 12, 'text': ' '.join(f'ending{i}' for i in range(50))}]
+        target = [{**source[0], 'start': 0, 'end': 1},
+                  {**source[1], 'start': 1, 'end': 3}]
+        with patch.dict('os.environ', {'E_MACRO_WORDS': '50'}):
+            self.rag.scoped.macro_words = 50
+            self.rag.scoped.seal(self.learner, self.video, source, 12)
+            self.rag.scoped.intervals(self.learner, self.video, 1,
+                [{'start': 0, 'end': 12, 'wall_ms': 12000, 'rate': 1}])
+            self.rag.scoped.seal(self.learner, 'youtube:uneven-copy', target, 3)
+        with self.db.connect() as db:
+            citation = db.execute(text("""SELECT chroma_id FROM scoped_chunks
+                WHERE video_key=:video AND t_start=10000 AND granularity='micro'"""),
+                {'video': self.video}).scalar_one()
+        with patch.object(self.rag.leases, 'near_cos', 1.1):
+            self.rag.leases.open_scoped('uneven-lease', self.learner, self.video,
+                                       [{'citations': [citation]}])
+        found = self.rag.scoped.retrieve(self.learner, 'youtube:uneven-copy', 'ending')
+        self.assertTrue(found)
+        self.assertTrue(all('ending0' not in item['snippet'] for item in found))
+
+    def test_transfer_does_not_chain_or_cross_learners(self):
+        self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
+        self.rag.scoped.intervals(self.learner, self.video, 1,
+            [{'start': 0, 'end': 12, 'wall_ms': 12000, 'rate': 1}])
+        self.rag.scoped.seal(self.learner, 'youtube:second', self.cues, 12)
+        self.assertTrue(self.rag.scoped.retrieve(self.learner, 'youtube:second', 'lesson'))
+        self.rag.scoped.seal('another-learner', 'youtube:third', self.cues, 12)
+        self.assertEqual(self.rag.scoped.retrieve('another-learner', 'youtube:third', 'lesson'), [])
+        # Exercise the transfer path using only a indirectly observed source.
+        self.rag.scoped.seal(self.learner, 'youtube:third', self.cues, 12)
+        with self.db.begin() as db:
+            db.execute(text("""UPDATE scoped_chunks SET state='SEALED',source_video_key=NULL
+                WHERE video_key='youtube:third'"""))
+        self.rag.scoped.transfer._transfer(self.learner, 'youtube:second', 'youtube:third')
+        self.assertEqual(self.rag.scoped.retrieve(self.learner, 'youtube:third', 'lesson'), [])
+
+    def test_source_revision_preserves_independently_observed_target(self):
+        self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
+        self.rag.scoped.intervals(self.learner, self.video, 1,
+            [{'start': 0, 'end': 12, 'wall_ms': 12000, 'rate': 1}])
+        self.rag.scoped.seal(self.learner, 'youtube:independent', self.cues, 12)
+        self.rag.scoped.intervals(self.learner, 'youtube:independent', 1,
+            [{'start': 0, 'end': 12, 'wall_ms': 12000, 'rate': 1}])
+        changed = [{**cue, 'text': f'Distinct botany replacement caption {i}.'}
+                   for i, cue in enumerate(self.cues)]
+        self.rag.scoped.seal(self.learner, self.video, changed, 12)
+        self.assertTrue(self.rag.scoped.retrieve(self.learner, 'youtube:independent', 'lesson'))
 
     def test_offset_reupload_reuses_vectors_and_transfers_only_observed_coverage(self):
         source_cues = [{'start': float(i), 'end': float(i + 1),
@@ -231,6 +410,12 @@ class ScopedStoreTests(unittest.TestCase):
                 learner_key=self.learner, video_key=self.video)), first)
             self.assertEqual(answer.call_count, 2)
 
+    def test_answer_cache_preserves_whitespace_in_quoted_questions(self):
+        cache = self.rag.answer_cache
+        arguments = ('scoped:learner-1|youtube:test123', 'model', 5, None)
+        self.assertNotEqual(cache.key('Explain "a  b"', *arguments),
+                            cache.key('Explain "a b"', *arguments))
+
     def test_cache_mutation_rules_match_random_exact_top_three(self):
         rng = random.Random(207)
         corpus = [[rng.gauss(0, 1) for _ in range(6)] for _ in range(30)]
@@ -284,7 +469,7 @@ class ScopedStoreTests(unittest.TestCase):
         seal = vector_routes.SealRequest(learner_key=self.learner, video_key=self.video,
             cues=self.cues, duration=12)
         observed = vector_routes.ScopedIntervalsRequest(learner_key=self.learner,
-            video_key=self.video, batch_seq=1,
+            video_key=self.video, batch_seq=1, revision='a' * 64,
             intervals=[{'start': 0, 'end': 5, 'wall_ms': 5000, 'rate': 1}])
         contexts = []
         def answer(_question, chunks, *_args, **_kwargs):
@@ -293,7 +478,7 @@ class ScopedStoreTests(unittest.TestCase):
         with patch.object(vector_routes, 'rag_engine', self.rag), \
              patch.object(routes, 'rag_engine', self.rag), \
              patch.object(routes.llm_service, 'answer_with_rag', side_effect=answer):
-            vector_routes.seal_scoped(seal)
+            observed.revision = vector_routes.seal_scoped(seal)['revision']
             vector_routes.scoped_intervals(observed)
             response = routes.ask_lesson(AskRequest(question='explain step', source_type='video',
                 learner_key=self.learner, video_key=self.video))

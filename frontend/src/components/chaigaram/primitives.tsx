@@ -59,7 +59,7 @@ export function PanelHeader({
 
 /* ------------------------------------------------------------------ */
 
-export function useCountUp(target: number, duration = 900) {
+function useCountUp(target: number, duration = 900) {
   const [value, setValue] = useState(0);
   const raf = useRef<number | null>(null);
 
@@ -362,13 +362,6 @@ export function PageHeader({
     </div>
   );
 }
-
-export const chartAxis = {
-  stroke: "var(--muted-foreground)",
-  fontSize: 11,
-  tickLine: false,
-  axisLine: false,
-};
 
 export function ChartTooltipBox({
   active,

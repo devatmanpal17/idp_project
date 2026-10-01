@@ -118,7 +118,7 @@ test('YouTube full captions seal through the durable job before intervals upload
     if (type === 'LEARNER_KEY') return 'learner-uuid';
     if (type === 'JOB_START') return {job_id: payload.request_id};
     if (type === 'JOB_STATUS') return {status: 'succeeded',
-      result: {sealed_added: 1, last_batch_seq: 40}};
+      result: {sealed_added: 1, last_batch_seq: 40, revision: 'a'.repeat(64)}};
     return {accepted: 1};
   }, {}, 'https://www.youtube.com/watch?v=video123');
   api.state.scopedEnabled = true;
@@ -131,6 +131,7 @@ test('YouTube full captions seal through the durable job before intervals upload
   assert.equal(started.payload.cues.length, api.state.mediaCaptions.length);
   const interval = calls.find(([type]) => type === 'F1_INTERVALS')[1];
   assert.ok(interval.batch_seq > 40);
+  assert.equal(interval.revision, 'a'.repeat(64));
   assert.ok(calls.findIndex(([type]) => type === 'JOB_STATUS') <
     calls.findIndex(([type]) => type === 'F1_INTERVALS'));
 });

@@ -45,6 +45,13 @@ def main():
 <script>
 async function prepareVideo() {
  const video=document.querySelector('video');
+ window.frameSamples=[];
+ video.requestVideoFrameCallback(function recordFrame(now,metadata){
+   window.frameSamples.push({now,mediaTime:metadata.mediaTime,
+     presentationTime:metadata.presentationTime,expectedDisplayTime:metadata.expectedDisplayTime,
+     presentedFrames:metadata.presentedFrames});
+   video.requestVideoFrameCallback(recordFrame);
+ });
  video.src=URL.createObjectURL(await fetch('fixture.webm').then(r=>r.blob()));
  const track=video.addTextTrack('captions','English','en');track.mode='showing';
  track.addCue(new VTTCue(.5,1.5,'Observed opening phrase about sorted sequences.'));
@@ -85,6 +92,8 @@ async function prepareVideo() {
             report['player'] = cdp.evaluate("""({seekFrom:window.seekFrom,seekTo:window.seekTo,
               mediaTime:document.querySelector('video').currentTime,visibility:document.visibilityState,
               status:document.getElementById('chaigaram-extension-root')?.shadowRoot?.getElementById('status')?.textContent})""", page)
+            report['frame_samples'] = cdp.evaluate('window.frameSamples', page)
+            (output / 'report.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
             deadline = time.monotonic() + 45
             while time.monotonic() < deadline:
                 diagnostics = http('http://127.0.0.1:8001/api/vectors/diagnostics')
