@@ -23,6 +23,15 @@ class FakeTransport:
 
 
 class ResidencyTests(unittest.TestCase):
+    def test_no_player_does_not_preload_and_latest_alias_is_resident(self):
+        transport = FakeTransport()
+        controller = ResidencyController(transport=transport, clock=lambda: 0)
+        controller.tick()
+        self.assertEqual(transport.actions, [])
+        transport.loaded = {'embeddinggemma:latest': 1000, 'llama3.2:3b': 2000}
+        controller.transition('PAUSED')
+        self.assertEqual(transport.actions, [])
+
     def test_pause_preload_play_dwell_and_hidden_release(self):
         tick = [0.0]
         transport = FakeTransport()

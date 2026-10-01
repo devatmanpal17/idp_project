@@ -55,14 +55,7 @@
   let learnerKeyPromise = null;
 
   function learnerKey() {
-    if (!learnerKeyPromise) learnerKeyPromise = chrome.storage.local.get('chaigaram-learner-key').then(async result => {
-      let key = result['chaigaram-learner-key'];
-      if (!key) {
-        key = crypto.randomUUID();
-        await chrome.storage.local.set({'chaigaram-learner-key': key});
-      }
-      return key;
-    });
+    if (!learnerKeyPromise) learnerKeyPromise = send('LEARNER_KEY');
     return learnerKeyPromise;
   }
 
@@ -404,26 +397,28 @@
         const key = await learnerKey();
         const videoKey = `youtube:${videoId}`;
         if (signature !== state.mediaSignature) {
-          await send('F1_SEAL', {learner_key: key, video_key: videoKey,
+          const sealed = await runAI('seal', {learner_key: key, video_key: videoKey,
             cues: captions.map(cue => ({start: cue.start_ms / 1000, end: cue.end_ms / 1000, text: cue.text})),
             duration: Number.isFinite(video.duration) && video.duration > 0
               ? video.duration : Math.max(...captions.map(cue => cue.end_ms)) / 1000});
           if (!stillCurrent()) return;
+          state.scopedSequence = Math.max(state.scopedSequence, sealed.last_batch_seq || 0);
           state.mediaSignature = signature;
         }
-        const pending = observation.tracker.pending.splice(0);
+        const pending = observation.tracker.pending.splice(0, 10000);
         if (pending.length) {
           try {
             await send('F1_INTERVALS', {learner_key: key, video_key: videoKey,
               batch_seq: ++state.scopedSequence, intervals: pending});
           } catch (error) {
             observation.tracker.pending.unshift(...pending);
-            state.scopedSequence -= 1;
             throw error;
           }
         }
         return;
       }
+      // The legacy API sends the merged ledger, so raw frame batches are unnecessary.
+      if (observation.tracker.pending) observation.tracker.pending.length = 0;
       if (signature !== state.mediaSignature) {
         const result = await send('TRANSCRIPT', { source_url: pageKey, topic: topic(), captions });
         if (!stillCurrent()) return;

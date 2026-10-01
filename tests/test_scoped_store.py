@@ -64,6 +64,28 @@ class ScopedStoreTests(unittest.TestCase):
         self.rag.scoped.recover()
         self.assertIn(row[0], self.rag.collection.get(include=[])['ids'])
 
+    def test_seal_retry_reuses_completed_embedding_batches(self):
+        original = self.embed.embed
+        seen = []
+        def interrupt_second_batch(texts):
+            seen.extend(texts)
+            if len(seen) > 1:
+                raise OSError('simulated interruption')
+            return original(texts)
+        with patch.dict('os.environ', {'F1_EMBED_BATCH_SIZE': '1'}), \
+             patch.object(self.embed, 'embed', side_effect=interrupt_second_batch):
+            with self.assertRaisesRegex(OSError, 'interruption'):
+                self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
+        with self.db.connect() as db:
+            checkpointed = db.execute(text('SELECT COUNT(*) FROM scoped_vector_blobs')).scalar_one()
+        self.assertEqual(checkpointed, 1)
+        calls = self.embed.calls
+        with patch.dict('os.environ', {'F1_EMBED_BATCH_SIZE': '1'}):
+            result = self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
+        self.assertGreater(result['sealed_added'], 0)
+        self.assertEqual(self.embed.calls - calls, len(set(
+            row['hash'] for row in self.rag.scoped._chunks(self.cues))) - 1)
+
     def test_implausible_interval_does_not_promote(self):
         self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
         result = self.rag.scoped.intervals(self.learner, self.video, 1,
@@ -142,6 +164,38 @@ class ScopedStoreTests(unittest.TestCase):
             copy_after = db.execute(text("""SELECT COUNT(*) FROM scoped_chunks WHERE
                 video_key='youtube:copy' AND state='ACTIVE'""")).scalar_one()
         self.assertEqual(copy_after, copy_before)
+
+    def test_new_copy_sealed_during_quiz_stays_locked_until_close(self):
+        source = [{'start': float(i), 'end': float(i + 1),
+                   'text': f'Original circuit lecture point number {i} and copper behavior.'}
+                  for i in range(20)]
+        self.rag.scoped.seal(self.learner, self.video, source, 20)
+        self.rag.scoped.intervals(self.learner, self.video, 1,
+            [{'start': 0, 'end': 20, 'wall_ms': 20000, 'rate': 1}])
+        with self.db.connect() as db:
+            cited = db.execute(text("""SELECT chroma_id FROM scoped_chunks WHERE
+                video_key=:video AND state='ACTIVE' AND granularity='micro' LIMIT 1"""),
+                {'video': self.video}).scalar_one()
+        lease = self.rag.leases.open_scoped('new-copy-quiz', self.learner, self.video,
+                                           [{'citations': [cited]}])
+        self.assertEqual(self.rag.leases.open_scoped('new-copy-quiz', self.learner,
+            self.video, [{'citations': [cited]}]), lease)
+        shifted = [{**cue, 'start': cue['start'] + 37, 'end': cue['end'] + 37}
+                   for cue in source]
+        self.rag.scoped.seal(self.learner, 'youtube:newcopy', shifted, 57)
+        with self.db.connect() as db:
+            rows = db.execute(text("""SELECT state,demote_refcount FROM scoped_chunks
+                WHERE video_key='youtube:newcopy'""")).all()
+        self.assertTrue(rows)
+        self.assertTrue(all(state != 'ACTIVE' and held > 0 for state, held in rows))
+        with self.assertRaisesRegex(ValueError, 'open quiz'):
+            self.rag.scoped.seal(self.learner, self.video,
+                [{**cue, 'text': cue['text'] + ' changed'} for cue in source], 20)
+        self.rag.leases.close('new-copy-quiz')
+        with self.db.connect() as db:
+            transferred = db.execute(text("""SELECT COUNT(*) FROM scoped_chunks WHERE
+                video_key='youtube:newcopy' AND state='ACTIVE'""")).scalar_one()
+        self.assertGreater(transferred, 0)
 
     def test_scoped_answer_cache_hit_avoids_model_and_embedding(self):
         self.rag.scoped.seal(self.learner, self.video, self.cues, 12)

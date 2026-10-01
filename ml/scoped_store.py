@@ -54,6 +54,10 @@ class ScopedStore:
         self.micro_words = int(os.getenv('E_MICRO_WORDS', '50'))
         self.macro_words = int(os.getenv('E_MACRO_WORDS', '220'))
         with self.engine.begin() as db:
+            # Checkpoint each completed batch so a resumed seal never repeats inference.
+            db.execute(text("""CREATE TABLE IF NOT EXISTS scoped_vector_blobs (
+                content_hash TEXT NOT NULL, embed_model TEXT NOT NULL, vector BLOB NOT NULL,
+                PRIMARY KEY(content_hash,embed_model))"""))
             db.execute(text("""CREATE TABLE IF NOT EXISTS scoped_videos (
                 learner_key TEXT NOT NULL, video_key TEXT NOT NULL,
                 duration_ms INTEGER NOT NULL, last_seq INTEGER NOT NULL DEFAULT -1,
@@ -136,6 +140,8 @@ class ScopedStore:
                     learner_key=:learner AND video_key=:video"""),
                     {'learner': learner, 'video': video}).scalar()
                 if existing and old_revision and old_revision != revision:
+                    if hasattr(self.rag, 'leases') and self.rag.leases.has_open(f'scoped:{learner}|{video}'):
+                        raise ValueError('Submit or abandon the open quiz before changing this caption track.')
                     revision_changed = True
                     ids = db.execute(text("""SELECT chroma_id FROM scoped_chunks WHERE
                         learner_key=:learner AND video_key=:video"""),
@@ -183,7 +189,9 @@ class ScopedStore:
                     found = db.execute(text("""SELECT 1 FROM scoped_chunks WHERE
                         learner_key=:learner AND video_key=:video AND chunk_id=:id"""),
                         {'learner': learner, 'video': video, 'id': piece['id']}).scalar()
-                    old_vector = db.execute(text("""SELECT vector FROM scoped_chunks WHERE
+                    old_vector = db.execute(text("""SELECT vector FROM scoped_vector_blobs WHERE
+                        content_hash=:hash AND embed_model=:model UNION ALL
+                        SELECT vector FROM scoped_chunks WHERE
                         content_hash=:hash AND embed_model=:model LIMIT 1"""),
                         {'hash': piece['hash'], 'model': self.rag.model_version}).scalar()
                 if found:
@@ -197,9 +205,16 @@ class ScopedStore:
             unknown = list(missing.items())
             for offset in range(0, len(unknown), batch_size):
                 batch = unknown[offset:offset + batch_size]
-                for (content_hash, _), vector in zip(batch,
-                        self.rag.embeddings.embed([content for _, content in batch])):
-                    known_vectors[content_hash] = blob(vector)
+                vectors = self.rag.embeddings.embed([content for _, content in batch])
+                if len(vectors) != len(batch):
+                    raise ValueError('Embedder returned an incomplete batch.')
+                with self.engine.begin() as db:
+                    for (content_hash, _), vector in zip(batch, vectors):
+                        raw = blob(vector)
+                        known_vectors[content_hash] = raw
+                        db.execute(text('''INSERT OR IGNORE INTO scoped_vector_blobs
+                            VALUES (:hash,:model,:vector)'''),
+                            {'hash': content_hash, 'model': self.rag.model_version, 'vector': raw})
             added = 0
             reused = len(prepared) - len(unknown)
             with self.engine.begin() as db:
@@ -217,10 +232,15 @@ class ScopedStore:
                              hash=piece['hash'], model=self.rag.model_version,
                              vector=vector, now=stamp()))
                     added += 1
+            if hasattr(self.rag, 'leases'):
+                self.rag.leases.refresh_scoped(learner)
             self.promote(learner, video)
             if hasattr(self, 'transfer'):
                 self.transfer.on_seal(learner, video)
+            with self.engine.connect() as db:
+                last_seq = self._scope(db, learner, video)['last_seq']
             return {'sealed_added': added, 'vectors_reused': reused,
+                    'last_batch_seq': last_seq,
                     'counts': self.status(learner, video)['counts']}
 
     def intervals(self, learner, video, seq, intervals):

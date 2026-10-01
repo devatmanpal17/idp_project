@@ -1,6 +1,6 @@
 """Observation and speculative-vector API. Never return sealed text or vectors."""
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from fastapi import APIRouter
 from ml import rag_engine
 from ml.temporal import Caption, Interval, MAX_MEDIA_MS
@@ -10,27 +10,37 @@ from .rag import _service_error
 router = APIRouter()
 
 
-class ScopedCue(BaseModel):
+class ScopedInput(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False, extra='forbid')
+
+
+class ScopedCue(ScopedInput):
     start: float = Field(ge=0)
     end: float = Field(gt=0)
     text: str = Field(min_length=1)
 
+    @model_validator(mode='after')
+    def ordered(self):
+        if self.end <= self.start:
+            raise ValueError('Caption end must be after start.')
+        return self
 
-class SealRequest(BaseModel):
+
+class SealRequest(ScopedInput):
     learner_key: str = Field(min_length=1, max_length=100)
     video_key: str = Field(min_length=1, max_length=200)
     cues: list[ScopedCue] = Field(min_length=1, max_length=20000)
     duration: float = Field(gt=0)
 
 
-class RenderedInterval(BaseModel):
+class RenderedInterval(ScopedInput):
     start: float = Field(ge=0)
     end: float = Field(gt=0)
     wall_ms: float = Field(gt=0)
     rate: float = Field(gt=0, le=16)
 
 
-class ScopedIntervalsRequest(BaseModel):
+class ScopedIntervalsRequest(ScopedInput):
     learner_key: str = Field(min_length=1, max_length=100)
     video_key: str = Field(min_length=1, max_length=200)
     batch_seq: int = Field(ge=0)

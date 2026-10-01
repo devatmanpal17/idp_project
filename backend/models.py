@@ -66,7 +66,7 @@ class GenerateQuizRequest(RequestModel):
 
 class AIJobRequest(BaseModel):
     request_id: Optional[str] = Field(default=None, pattern=r'^[a-zA-Z0-9-]{8,80}$')
-    operation: Literal["ask", "summarize", "quiz"]
+    operation: Literal["ask", "summarize", "quiz", "seal"]
     payload: Dict[str, Any]
 
 

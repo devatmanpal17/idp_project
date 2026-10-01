@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import ValidationError
 from ..models import AIJobRequest, AskRequest, GenerateQuizRequest, SummarizeRequest
 from .rag import ask_lesson, generate_quiz, summarize_page
+from .vectors import SealRequest, seal_scoped
 from ml import rag_engine
 from ml.scheduler import controller
 
@@ -12,8 +13,8 @@ router = APIRouter()
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="chaigaram-ai")
 _speculation_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chaigaram-speculation")
 store = rag_engine.jobs
-MODELS = {"ask": AskRequest, "quiz": GenerateQuizRequest, "summarize": SummarizeRequest}
-HANDLERS = {"ask": ask_lesson, "quiz": generate_quiz, "summarize": summarize_page}
+MODELS = {"ask": AskRequest, "quiz": GenerateQuizRequest, "summarize": SummarizeRequest, "seal": SealRequest}
+HANDLERS = {"ask": ask_lesson, "quiz": generate_quiz, "summarize": summarize_page, "seal": seal_scoped}
 
 
 def run_job(job_id):

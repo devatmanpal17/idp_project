@@ -38,6 +38,8 @@ class EvidenceLease:
             db.execute(text("""CREATE TABLE IF NOT EXISTS evidence_lease_chunks (
                 lease_id TEXT NOT NULL, chunk_id TEXT NOT NULL,
                 PRIMARY KEY (lease_id, chunk_id))"""))
+            db.execute(text("""CREATE TABLE IF NOT EXISTS evidence_lease_evidence (
+                quiz_id TEXT PRIMARY KEY, questions_json TEXT NOT NULL)"""))
 
     def _rows(self, document_id):
         with self.engine.connect() as db:
@@ -96,9 +98,13 @@ class EvidenceLease:
         with self.lock:
             self.expire()
             with self.engine.connect() as db:
+                existing = db.execute(text('SELECT id,state FROM evidence_leases WHERE quiz_id=:quiz'),
+                                      {'quiz': quiz_id}).first()
+                if existing and existing.state != 'OPEN':
+                    return existing.id
                 rows = [dict(row) for row in db.execute(text("""SELECT * FROM scoped_chunks
                     WHERE learner_key=:learner AND video_key=:video
-                    AND state IN ('ACTIVE','DEMOTED')"""),
+                    AND state IN ('ACTIVE','DEMOTED','SEALED')"""),
                     {'learner': learner, 'video': video}).mappings()]
             by_id = {row['chroma_id']: row for row in rows}
             evidence = {citation for question in questions for citation in question['citations']}
@@ -123,7 +129,7 @@ class EvidenceLease:
                 with self.engine.connect() as db:
                     counterparts = [dict(row) for row in db.execute(text("""SELECT * FROM scoped_chunks
                         WHERE learner_key=:learner AND video_key=:video
-                        AND state IN ('ACTIVE','DEMOTED')"""),
+                        AND state IN ('ACTIVE','DEMOTED','SEALED')"""),
                         {'learner': learner, 'video': other}).mappings()]
                 for chroma_id in list(selected):
                     source_row = by_id.get(chroma_id)
@@ -140,18 +146,23 @@ class EvidenceLease:
                         for row in counterparts:
                             if row['t_start'] < mapped_end and mapped_start < row['t_end']:
                                 selected.add(row['chroma_id'])
-            lease_id = uuid.uuid4().hex
+            lease_id = existing.id if existing else uuid.uuid4().hex
             opened = _now()
             expires = opened + timedelta(seconds=len(questions) * self.seconds_per_question + self.grace_seconds)
             with self.engine.begin() as db:
-                db.execute(text("""INSERT INTO evidence_leases VALUES
+                db.execute(text("""INSERT OR IGNORE INTO evidence_leases VALUES
                     (:id,:quiz,:scope,:opened,:expires,'OPEN')"""),
                     {'id': lease_id, 'quiz': quiz_id, 'scope': scope,
                      'opened': opened.isoformat(), 'expires': expires.isoformat()})
+                db.execute(text('INSERT OR IGNORE INTO evidence_lease_evidence VALUES (:quiz,:questions)'),
+                           {'quiz': quiz_id, 'questions': json.dumps(questions)})
                 for chroma_id in selected:
-                    db.execute(text('INSERT INTO evidence_lease_chunks VALUES (:lease,:chunk)'),
-                               {'lease': lease_id, 'chunk': chroma_id})
-                    db.execute(text("""UPDATE scoped_chunks SET state='DEMOTED',
+                    added = db.execute(text('INSERT OR IGNORE INTO evidence_lease_chunks VALUES (:lease,:chunk)'),
+                                       {'lease': lease_id, 'chunk': chroma_id})
+                    if not added.rowcount:
+                        continue
+                    db.execute(text("""UPDATE scoped_chunks SET
+                        state=CASE WHEN state='ACTIVE' THEN 'DEMOTED' ELSE state END,
                         demote_refcount=demote_refcount+1 WHERE chroma_id=:id"""),
                         {'id': chroma_id})
             self.rag.collection.delete(ids=sorted(selected))
@@ -167,6 +178,17 @@ class EvidenceLease:
                     self.rag.answer_cache.remove(f'scoped:{learner}|{item_video}', ids)
             self.rag.invalidate_cache()
             return lease_id
+
+    def refresh_scoped(self, learner):
+        """Include newly sealed copies before either observation path can promote them."""
+        with self.lock, self.engine.connect() as db:
+            leases = db.execute(text('''SELECT l.quiz_id,l.document_id,e.questions_json
+                FROM evidence_leases l JOIN evidence_lease_evidence e ON e.quiz_id=l.quiz_id
+                WHERE l.state='OPEN' ''')).all()
+        prefix = f'scoped:{learner}|'
+        for quiz, scope, questions in leases:
+            if scope.startswith(prefix):
+                self.open_scoped(quiz, learner, scope[len(prefix):], json.loads(questions))
 
     def close(self, quiz_id):
         with self.lock:
@@ -222,6 +244,14 @@ class EvidenceLease:
                     self.rag.answer_cache.insert(
                         self._document_for_chunk(restore[0]), [self._vector(chunk_id) for chunk_id in restore])
             self.rag.invalidate_cache()
+            if scope.startswith('scoped:'):
+                learner = scope.removeprefix('scoped:').split('|', 1)[0]
+                with self.engine.connect() as db:
+                    videos = db.execute(text('SELECT video_key FROM scoped_videos WHERE learner_key=:learner'),
+                                        {'learner': learner}).scalars().all()
+                for video in videos:
+                    self.rag.scoped.promote(learner, video)
+                    self.rag.scoped.transfer.on_observation(learner, video)
             return len(restore)
 
     def _document_for_chunk(self, chunk_id):
@@ -268,8 +298,7 @@ class EvidenceLease:
         with self.lock:
             self.expire()
             with self.engine.connect() as db:
-                rows = db.execute(text("""SELECT c.id FROM temporal_chunks c
-                    JOIN evidence_lease_chunks lc ON lc.chunk_id=c.id
+                rows = db.execute(text("""SELECT lc.chunk_id FROM evidence_lease_chunks lc
                     JOIN evidence_leases l ON l.id=lc.lease_id
                     WHERE l.state='OPEN'""")).scalars().all()
             if rows:
@@ -277,7 +306,12 @@ class EvidenceLease:
                     for chunk_id in rows:
                         db.execute(text("UPDATE temporal_chunks SET state='DEMOTED' WHERE id=:id"),
                                    {'id': chunk_id})
-                        db.execute(text("UPDATE scoped_chunks SET state='DEMOTED' WHERE chroma_id=:id"),
+                        db.execute(text("""UPDATE scoped_chunks SET
+                            state=CASE WHEN state='ACTIVE' THEN 'DEMOTED' ELSE state END,
+                            demote_refcount=(SELECT COUNT(*) FROM evidence_lease_chunks lc
+                              JOIN evidence_leases l ON l.id=lc.lease_id
+                              WHERE lc.chunk_id=:id AND l.state='OPEN')
+                            WHERE chroma_id=:id"""),
                                    {'id': chunk_id})
                 self.rag.collection.delete(ids=sorted(set(rows)))
                 self.rag.invalidate_cache()
@@ -336,6 +370,12 @@ class EvidenceLease:
 
     def has_open(self, document_id):
         with self.engine.connect() as db:
+            if document_id.startswith('scoped:'):
+                learner, video = document_id.removeprefix('scoped:').split('|', 1)
+                if db.execute(text('''SELECT 1 FROM scoped_chunks WHERE learner_key=:learner
+                    AND video_key=:video AND demote_refcount>0 LIMIT 1'''),
+                    {'learner': learner, 'video': video}).scalar():
+                    return True
             return bool(db.execute(text("""SELECT COUNT(*) FROM evidence_leases
                 WHERE state='OPEN' AND document_id=:doc"""), {'doc': document_id}).scalar())
 

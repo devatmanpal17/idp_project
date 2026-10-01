@@ -12,6 +12,10 @@ log = logging.getLogger(__name__)
 STATES = {'PLAYING', 'PAUSED', 'SEEKING', 'HIDDEN', 'ENDED'}
 
 
+def canonical_model(name):
+    return name if ':' in name.rsplit('/', 1)[-1] else f'{name}:latest'
+
+
 class OllamaTransport:
     def __init__(self):
         self.base = os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434').rstrip('/')
@@ -49,12 +53,13 @@ class ResidencyController:
         self.embedder = os.getenv('OLLAMA_EMBED_MODEL', 'embeddinggemma')
         self.default_keep_alive = os.getenv('C_DEFAULT_KEEP_ALIVE', '10m')
         self.enabled = True
+        self.player_active = False
         self.loads = 0
         self.unloads = 0
         self.last_resident_mb = 0.0
 
     def keep_alive(self, model):
-        if not self.enabled:
+        if not self.enabled or not self.player_active:
             return self.default_keep_alive
         if self.state == 'HIDDEN' and self.clock() - self.state_since >= self.hidden_dwell:
             return self.default_keep_alive
@@ -63,7 +68,8 @@ class ResidencyController:
         return -1
 
     def _act(self, model, keep_alive):
-        self.transport.control(model, keep_alive, embed=model == self.embedder)
+        self.transport.control(model, keep_alive,
+                               embed=canonical_model(model) == canonical_model(self.embedder))
         if keep_alive == '0':
             self.unloads += 1
         else:
@@ -74,36 +80,42 @@ class ResidencyController:
         if state not in STATES:
             raise ValueError('Invalid player state.')
         with self.lock:
+            self.player_active = True
             if state != self.state:
                 self.state, self.state_since = state, self.clock()
             return self.tick()
 
     def tick(self):
         with self.lock:
+            if not self.player_active:
+                return self.status()
             try:
                 models = self.transport.ps()
                 self.enabled = True
-                resident = {item.get('name', item.get('model', '')): item for item in models}
+                resident = {canonical_model(item.get('name', item.get('model', ''))): item for item in models}
+                llm_key, embed_key = canonical_model(self.llm), canonical_model(self.embedder)
                 self.last_resident_mb = sum(int(item.get('size', 0)) for item in models) / (1024 * 1024)
                 if self.clock() - self.last_action < self.cooldown:
                     return self.status()
                 if self.state in ('PAUSED', 'ENDED'):
                     # Evict unrelated models before making room for the assistant.
                     for name in list(resident):
-                        if name not in (self.llm, self.embedder) and self.last_resident_mb > self.budget_mb:
+                        if name not in (llm_key, embed_key) and self.last_resident_mb > self.budget_mb:
                             self._act(name, '0')
                             return self.status()
-                    if self.llm not in resident:
+                    if llm_key not in resident:
                         self._act(self.llm, '-1')
-                    elif self.embedder not in resident:
+                    elif embed_key not in resident:
                         self._act(self.embedder, '-1')
-                elif self.state == 'PLAYING' and self.clock() - self.state_since >= self.play_dwell:
-                    if self.last_resident_mb > self.budget_mb and self.llm in resident:
+                elif self.state == 'PLAYING':
+                    if embed_key not in resident:
+                        self._act(self.embedder, '-1')
+                    elif self.clock() - self.state_since >= self.play_dwell and self.last_resident_mb > self.budget_mb and llm_key in resident:
                         self._act(self.llm, '0')
                 elif self.state == 'HIDDEN' and self.clock() - self.state_since >= self.hidden_dwell:
-                    if self.llm in resident:
+                    if llm_key in resident:
                         self._act(self.llm, '0')
-                    elif self.embedder in resident:
+                    elif embed_key in resident:
                         self._act(self.embedder, '0')
                 return self.status()
             except Exception as exc:
@@ -113,6 +125,7 @@ class ResidencyController:
 
     def status(self):
         return {'state': self.state, 'enabled': self.enabled,
+                'player_active': self.player_active,
                 'resident_mb': self.last_resident_mb,
                 'loads': self.loads, 'unloads': self.unloads}
 

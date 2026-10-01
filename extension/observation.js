@@ -16,8 +16,14 @@
       if (elapsed <= 0 || elapsed > 1000 || delta <= 0 || last.rate !== rate ||
           delta > elapsed * rate + 50) return;
       this.add(Math.ceil(last.mediaMs), Math.floor(mediaMs));
-      this.pending.push({start: last.mediaMs / 1000, end: mediaMs / 1000,
-        wall_ms: elapsed, rate});
+      const tail = this.pending.at(-1);
+      if (tail && tail.end === last.mediaMs / 1000 && tail.rate === rate) {
+        tail.end = mediaMs / 1000;
+        tail.wall_ms += elapsed;
+      } else {
+        this.pending.push({start: last.mediaMs / 1000, end: mediaMs / 1000,
+          wall_ms: elapsed, rate});
+      }
     }
     add(start, end) {
       if (end <= start) return;
