@@ -37,6 +37,7 @@ from .routes.learning_data import router as learning_data_router
 from .routes.jobs import router as jobs_router, resume_jobs
 from .routes.vectors import router as vectors_router
 from .routes.runtime import router as runtime_router
+from .routes.mistakes import router as mistakes_router
 
 @asynccontextmanager
 async def lifespan(app):
@@ -79,3 +80,4 @@ app.include_router(learning_data_router)
 app.include_router(jobs_router)
 app.include_router(vectors_router)
 app.include_router(runtime_router)
+app.include_router(mistakes_router)

@@ -6,6 +6,8 @@ import type {
   ActivityEntry,
   Course,
   HistoryEntry,
+  MistakeCard,
+  MistakeQueue,
   Quiz,
   Recommendation,
   StudyEvent,
@@ -72,4 +74,31 @@ export function deleteHistoryEntry(historyId: string) {
   }>(`/learning/history/${encodeURIComponent(historyId)}`, {
     method: "DELETE",
   });
+}
+
+export function mistakesQuery(includeScheduled: boolean, offset = 0) {
+  return queryOptions({
+    queryKey: ["mistakes", includeScheduled, offset] as const,
+    queryFn: () =>
+      apiJSON<MistakeQueue>(
+        `/learning/mistakes?include_scheduled=${includeScheduled}&offset=${offset}&limit=20`,
+      ),
+    staleTime: 0,
+    refetchInterval: 15_000,
+  });
+}
+
+export function reviewMistake(
+  id: string,
+  outcome: "again" | "remembered",
+  version: number,
+) {
+  return apiJSON<MistakeCard>(
+    `/learning/mistakes/${encodeURIComponent(id)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ outcome, version }),
+    },
+  );
 }

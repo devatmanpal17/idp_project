@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   BookOpen,
+  BookOpenCheck,
   CalendarClock,
   Compass,
   History,
@@ -27,6 +28,7 @@ const NAV = [
   { to: "/courses", label: "Courses", icon: BookOpen },
   { to: "/mastery", label: "Mastery", icon: Radar },
   { to: "/quizzes", label: "Practice", icon: ListChecks },
+  { to: "/mistakes", label: "Mistakes", icon: BookOpenCheck },
   { to: "/study-plan", label: "Plan", icon: CalendarClock },
   { to: "/recommendations", label: "Next up", icon: Compass },
   { to: "/history", label: "History", icon: History },

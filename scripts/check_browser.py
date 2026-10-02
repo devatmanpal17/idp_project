@@ -7,6 +7,7 @@ import base64
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -171,13 +172,53 @@ def main():
             if not skip_quiz:
                 until(lambda: click('Generate New AI Practice Quiz', session))
                 until(lambda: cdp.evaluate("[...document.querySelectorAll('button')].filter(b => /^A\\./.test(b.innerText.trim())).length === 3", session), 300)
-                cdp.evaluate("[...document.querySelectorAll('button')].filter(b => /^A\\./.test(b.innerText.trim())).forEach(b=>b.click())", session)
+                # Read only the disposable test database to select one wrong
+                # choice and two correct choices deterministically, independent
+                # of the model's randomized answer positions.
+                connection = sqlite3.connect(temp / 'analytics.db')
+                try:
+                    stored = connection.execute('SELECT questions_json FROM generated_quizzes ORDER BY created_at DESC LIMIT 1').fetchone()
+                finally:
+                    connection.close()
+                questions = json.loads(stored[0])
+                selected = [next(choice for choice in q['choices'] if choice != q['answer']) if index == 0
+                            else q['answer'] for index, q in enumerate(questions)]
+                cdp.evaluate(f"(() => {{ const choices=[...document.querySelectorAll('button')].filter(b=>/^[A-D]\\./.test(b.innerText.trim())); {json.dumps(selected)}.forEach((value,index)=>{{ const button=choices.slice(index*4,index*4+4).find(b=>b.querySelector('span.flex-1')?.textContent === value); if (!button) throw new Error('Quiz choice was not found'); button.click(); }}); }})()", session)
                 until(lambda: click('Submit for Diagnostic Evaluation', session))
                 until(lambda: cdp.evaluate("document.body.innerText.includes('Assessment Mastery: Before and After')", session))
                 record('dashboard_quiz_generation_and_scoring')
+                notebook = http('http://127.0.0.1:8001/api/learning/mistakes')
+                assert notebook['summary']['due'] == 1, notebook
+                card = notebook['items'][0]
+                cdp.call('Page.navigate', {'url': 'http://127.0.0.1:8081/mistakes'}, session)
+                until(lambda: cdp.evaluate("document.querySelectorAll('[data-review-card]').length === 1", session))
+                assert not cdp.evaluate("document.body.innerText.includes('Expected answer:')", session)
+                until(lambda: click('Reveal feedback', session))
+                until(lambda: cdp.evaluate("document.body.innerText.includes('Expected answer:')", session))
+                capture_ui('/mistakes/revealed', 'desktop', session)
+                record('mistake_notebook_recall_and_reveal')
+                until(lambda: click('Again', session))
+                until(lambda: cdp.evaluate("document.body.innerText.includes('Review saved.')", session))
+                scheduled = http('http://127.0.0.1:8001/api/learning/mistakes?include_scheduled=true')['items'][0]
+                assert scheduled['version'] == 1 and scheduled['streak'] == 0
+                assert scheduled['due_at'] > notebook['server_time']
+                cdp.call('Page.reload', {}, session)
+                until(lambda: cdp.evaluate("document.body.innerText.includes(\"You're up to date\")", session))
+                until(lambda: click('All cards', session))
+                until(lambda: cdp.evaluate("document.querySelectorAll('[data-review-card]').length === 1", session))
+                assert not cdp.evaluate("document.body.innerText.includes('Expected answer:')", session)
+                record('mistake_notebook_again_persists_after_reload')
+                until(lambda: click('Reveal feedback', session))
+                until(lambda: click('Remembered', session))
+                until(lambda: cdp.evaluate("document.body.innerText.includes('Review saved.')", session))
+                scheduled = http('http://127.0.0.1:8001/api/learning/mistakes?include_scheduled=true')['items'][0]
+                assert scheduled['id'] == card['id'] and scheduled['version'] == 2
+                assert scheduled['streak'] == 1 and scheduled['review_count'] == 2
+                assert not http('http://127.0.0.1:8001/api/learning/mistakes')['items']
+                record('mistake_notebook_remembered_schedule')
             data = http('http://127.0.0.1:8001/api/learning/data')
             course = data['courses'][0]['id']
-            for path in ['/', '/courses', '/courses/' + course, '/mastery', '/study-plan', '/recommendations', '/history', '/simulator', '/profile', '/settings']:
+            for path in ['/', '/courses', '/courses/' + course, '/mastery', '/quizzes', '/mistakes', '/study-plan', '/recommendations', '/history', '/simulator', '/profile', '/settings']:
                 cdp.call('Page.navigate', {'url': 'http://127.0.0.1:8081' + path}, session)
                 until(lambda: cdp.evaluate("document.readyState === 'complete' && Boolean(document.querySelector('h1'))", session))
                 time.sleep(.6)
@@ -193,7 +234,7 @@ def main():
             (OUTPUT / 'settings.png').write_bytes(base64.b64decode(screenshot))
             cdp.call('Emulation.setDeviceMetricsOverride', {
                 'width': 390, 'height': 844, 'deviceScaleFactor': 1, 'mobile': True}, session)
-            for path in ['/', '/courses', '/courses/' + course, '/mastery', '/study-plan',
+            for path in ['/', '/courses', '/courses/' + course, '/mastery', '/quizzes', '/mistakes', '/study-plan',
                          '/recommendations', '/history', '/simulator', '/profile', '/settings']:
                 cdp.call('Page.navigate', {'url': 'http://127.0.0.1:8081' + path}, session)
                 until(lambda: cdp.evaluate("document.readyState === 'complete' && Boolean(document.querySelector('h1'))", session))

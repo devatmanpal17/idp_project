@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle2,
@@ -120,13 +120,21 @@ function QuizzesScreen() {
           </p>
         </div>
 
-        <button
-          onClick={() => setGeneratorOpen(true)}
-          className="inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-xs font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90"
-        >
-          <Wand2 className="h-4 w-4" />
-          Generate New AI Practice Quiz
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            to="/mistakes"
+            className="rounded-md border border-border px-3.5 py-2 text-xs font-medium"
+          >
+            Review missed questions
+          </Link>
+          <button
+            onClick={() => setGeneratorOpen(true)}
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-xs font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90"
+          >
+            <Wand2 className="h-4 w-4" />
+            Generate New AI Practice Quiz
+          </button>
+        </div>
       </div>
 
       <Panel className="border-accent/30 p-5">

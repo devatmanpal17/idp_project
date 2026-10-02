@@ -59,15 +59,34 @@ class ResidencyController:
         self.pins = 0
         self.last_resident_mb = 0.0
         self.pinned = set()
+        self.requested_pins = set()
+        self.retired = set()
+
+    def set_chat_model(self, model):
+        with self.lock:
+            previous = canonical_model(self.llm)
+            self.llm = model
+            current = canonical_model(model)
+            self.retired.discard(current)
+            if (previous != current and previous != canonical_model(self.embedder)
+                    and previous in (self.pinned | self.requested_pins)):
+                self.retired.add(previous)
 
     def keep_alive(self, model):
-        if not self.enabled or not self.player_active:
-            return self.default_keep_alive
-        if self.state == 'HIDDEN' and self.clock() - self.state_since >= self.hidden_dwell:
-            return self.default_keep_alive
-        if model == self.llm and self.state == 'PLAYING' and self.clock() - self.state_since >= self.play_dwell:
-            return self.default_keep_alive
-        return -1
+        with self.lock:
+            if not self.enabled or not self.player_active:
+                return self.default_keep_alive
+            name = canonical_model(model)
+            if name not in {canonical_model(self.llm), canonical_model(self.embedder)}:
+                return self.default_keep_alive
+            if self.state == 'HIDDEN' and self.clock() - self.state_since >= self.hidden_dwell:
+                return self.default_keep_alive
+            if name == canonical_model(self.llm) and self.state == 'PLAYING' and self.clock() - self.state_since >= self.play_dwell:
+                return self.default_keep_alive
+            # Requests may pin before the worker's next residency sample. Keep
+            # that intent so a rapid configuration switch can retire the pin.
+            self.requested_pins.add(name)
+            return -1
 
     def _act(self, model, keep_alive, loaded=False):
         self.transport.control(model, keep_alive,
@@ -75,6 +94,7 @@ class ResidencyController:
         if keep_alive == '0':
             self.unloads += 1
             self.pinned.discard(canonical_model(model))
+            self.requested_pins.discard(canonical_model(model))
         else:
             if loaded:
                 self.pins += 1
@@ -83,6 +103,16 @@ class ResidencyController:
             if keep_alive == '-1':
                 self.pinned.add(canonical_model(model))
         self.last_action = self.clock()
+
+    def request_completed(self, model, keep_alive):
+        """A switched-away request may finish after the worker retired its pin."""
+        if keep_alive != -1:
+            return
+        with self.lock:
+            name = canonical_model(model)
+            self.requested_pins.add(name)
+            if name not in {canonical_model(self.llm), canonical_model(self.embedder)}:
+                self.retired.add(name)
 
     def transition(self, state):
         if state not in STATES:
@@ -105,6 +135,14 @@ class ResidencyController:
                 llm_key, embed_key = canonical_model(self.llm), canonical_model(self.embedder)
                 self.last_resident_mb = sum(int(item.get('size', 0)) for item in models) / (1024 * 1024)
                 if self.clock() - self.last_action < self.cooldown:
+                    return self.status()
+                for name in sorted(self.retired):
+                    if name not in resident:
+                        self.retired.discard(name)
+                        self.requested_pins.discard(name)
+                        continue
+                    self._act(name, '0')
+                    self.retired.discard(name)
                     return self.status()
                 if self.state in ('PAUSED', 'ENDED'):
                     # Evict unrelated models before making room for the assistant.
