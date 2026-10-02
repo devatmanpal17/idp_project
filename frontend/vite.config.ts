@@ -12,6 +12,8 @@ export default defineConfig({
     }),
     nitro({
       preset: "cloudflare-module",
+      // Local Vite runs in Node; preview checks the built worker with Wrangler.
+      devServer: { runner: "node-worker" },
       output: {
         dir: "dist",
         serverDir: "dist/server",

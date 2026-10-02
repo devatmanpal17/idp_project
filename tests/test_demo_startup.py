@@ -44,6 +44,44 @@ class ModelReadinessTests(unittest.TestCase):
 
 
 class LauncherTests(unittest.TestCase):
+    def frontend_fixture(self, root, installed_version='1.0.0', optional_missing=False):
+        (root/'node_modules/vite/bin').mkdir(parents=True)
+        (root/'node_modules/vite/bin/vite.js').write_text('fixture')
+        manifest={'dependencies':{'vite':'1.0.0'}}
+        packages={'':manifest,'node_modules/vite':{'version':'1.0.0'},'node_modules/transitive':{'version':'1.0.0'}}
+        if optional_missing:
+            packages['node_modules/other-platform']={'version':'1.0.0','optional':True}
+        installed={'node_modules/vite':{'version':'1.0.0'},'node_modules/transitive':{'version':installed_version}}
+        (root/'package.json').write_text(json.dumps(manifest))
+        (root/'package-lock.json').write_text(json.dumps({'packages':packages}))
+        (root/'node_modules/.package-lock.json').write_text(json.dumps({'packages':installed}))
+
+    def test_current_lockfile_reuses_installed_dependencies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            self.frontend_fixture(root)
+            self.assertTrue(launcher.frontend_dependencies_current(root))
+
+    def test_transitive_lockfile_change_requires_reinstall(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            self.frontend_fixture(root,installed_version='0.9.0')
+            self.assertFalse(launcher.frontend_dependencies_current(root))
+
+    def test_missing_other_platform_optional_package_is_allowed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            self.frontend_fixture(root,optional_missing=True)
+            self.assertTrue(launcher.frontend_dependencies_current(root))
+
+    def test_missing_or_corrupt_installed_lockfile_requires_reinstall(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            self.assertFalse(launcher.frontend_dependencies_current(root))
+            self.frontend_fixture(root)
+            (root/'node_modules/.package-lock.json').write_text('{broken')
+            self.assertFalse(launcher.frontend_dependencies_current(root))
+
     def test_node_version_rejects_previous_documented_18_and_20(self):
         for version in ('v18.20.0', 'v20.19.0', 'v22.11.0', 'invalid'):
             self.assertFalse(launcher.node_supported(version), version)

@@ -91,6 +91,28 @@ def checked_run(args, cwd, env):
         raise StartupError('Dependency installation failed. Fix the error above and relaunch.')
 
 
+def frontend_dependencies_current(frontend=ROOT/'frontend'):
+    """Detect stale node_modules after a pull, including transitive security updates."""
+    try:
+        manifest = json.loads((frontend/'package.json').read_text(encoding='utf-8'))
+        expected = json.loads((frontend/'package-lock.json').read_text(encoding='utf-8'))['packages']
+        installed = json.loads((frontend/'node_modules/.package-lock.json').read_text(encoding='utf-8'))['packages']
+        for field in ('dependencies', 'devDependencies'):
+            if manifest.get(field, {}) != expected[''].get(field, {}):
+                return False
+        for name, package in expected.items():
+            if not name.startswith('node_modules/') or 'version' not in package:
+                continue
+            actual = installed.get(name)
+            if actual is None and package.get('optional'):
+                continue  # npm omits optional binaries for other operating systems.
+            if not actual or actual.get('version') != package['version']:
+                return False
+        return (frontend/'node_modules/vite/bin/vite.js').exists()
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
 def ensure_dependencies(env, install=False):
     if sys.version_info < (3, 10):
         raise StartupError('Python 3.10+ is required.')
@@ -107,7 +129,7 @@ def ensure_dependencies(env, install=False):
         checked_run([sys.executable, '-m', 'pip', 'install', '-r', 'backend/requirements.txt',
                      '-r', 'ml/requirements.txt'], ROOT, env)
     vite = ROOT / 'frontend/node_modules/vite/bin/vite.js'
-    if install or not vite.exists():
+    if install or not frontend_dependencies_current():
         print('Installing locked frontend dependencies...', flush=True)
         checked_run([npm, 'ci'], ROOT / 'frontend', env)
     return node, vite
@@ -141,7 +163,7 @@ def main(argv=None):
                 raise StartupError('Node.js 22.12+ is required.')
             missing = [name for name in ('fastapi', 'uvicorn', 'pydantic', 'numpy', 'chromadb', 'sqlalchemy', 'psycopg')
                        if importlib.util.find_spec(name) is None]
-            if missing or not (ROOT / 'frontend/node_modules/vite/bin/vite.js').exists():
+            if missing or not frontend_dependencies_current():
                 raise StartupError('Dependencies are missing. Run start_all.bat to install them.')
         else:
             node, vite = ensure_dependencies(env, options.install)

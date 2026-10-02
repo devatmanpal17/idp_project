@@ -296,6 +296,18 @@ verify, and stop the services without opening a browser. Regular startup serves
 the frontend with Vite; production builds are checked separately with
 `npm run build`.
 
+### Preview the production build locally
+
+Keep FastAPI/Ollama running and stop any dashboard already using port 8080.
+From `frontend/`, run `npm run build`, then `npm run preview`. This serves the
+built Cloudflare worker and assets at `http://127.0.0.1:8080` using the locked
+Wrangler CLI in local mode. It does not deploy the site. The explicit command
+also avoids Nitro's Windows `spawn npx ENOENT` preview failure.
+
+The launcher checks the installed npm lockfile against the repository lockfile,
+so pulling dependency fixes triggers `npm ci` rather than silently reusing an
+older dependency tree.
+
 ## Browser-extension installation
 
 1. Keep FastAPI running on port 8000.

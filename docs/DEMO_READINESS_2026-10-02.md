@@ -20,6 +20,9 @@ profile, and the installed Ollama models.
 | Backend reachable but Ollama/model unavailable | Header incorrectly said the engine was offline; assistant always advertised Online. | Header distinguishes AI setup from backend connectivity; assistant avoids claiming live readiness. |
 | Only a non-default model tag installed | Health checks could report the uninstalled default tag as ready. | Chat and embedding checks compare canonical exact tags, including registry names with ports. |
 | One-click startup | Wrong pip interpreter, inaccurate Node minimum, ignored installer failures, unchecked ports/models, and success before readiness. | Active-interpreter pip, locked npm install, Node 22.12+, fixed-port checks, exact model preflight, local Ollama startup, readiness checks, logs, and owned-process cleanup. |
+| Pulling dependency fixes with old node_modules present | The launcher could reuse a stale dependency tree. | Installed package versions and root dependency declarations must match the repository lockfile; mismatches trigger npm ci. |
+| Production preview on Windows | Nitro failed with spawn npx ENOENT. | npm run preview uses the explicitly installed, locked Wrangler CLI in local mode. |
+| Vulnerable dependency versions | npm audit reported known dependency vulnerabilities. | Nitro and affected transitive packages are updated; Firestore's gRPC dependency is pinned to a patched 1.x version. The final full npm audit reports zero known vulnerabilities. |
 
 The launcher serves the development frontend, so it no longer performs an unused
 production build on every launch. Missing dependencies are installed; already
@@ -27,7 +30,7 @@ installed dependencies are reused. `--install` forces dependency installation.
 
 ## Verification
 
-- Python: **125 passed**, including all prior patent/notebook tests and 16 new
+- Python: **129 passed**, including all prior patent/notebook tests and 20 new
   startup/model-readiness regressions; actual temporary SQLite and Chroma stores,
   with controlled model responses in the automated suite.
 - Extension: **12 Node tests passed**.
@@ -43,9 +46,9 @@ installed dependencies are reused. `--install` forces dependency installation.
   routes, settings save, theme/navigation, calendar export, source deletion,
   actual MV3 extension requests, and real video seek gating. Both contact sheets
   were visually reviewed.
-- TypeScript, ESLint with zero errors/warnings, production client/server build,
-  Python compilation, and `git diff --check`: passed. Existing bundle-size and
-  Nitro option advisories remain in the build output.
+- TypeScript, ESLint with zero errors/warnings, fresh `npm ci`, production client/server build,
+  Python compilation, and `git diff --check`: passed. Build output includes
+  bundle-size and module-directive advisories; neither fails the build.
 - Cold launcher smoke test: started its own Ollama, waited for both servers and
   AI readiness, then stopped its own processes. The batch wrapper's read-only
   preflight also passed against the installed models.
@@ -62,6 +65,46 @@ records the initial eight failing scenarios; `failure_checks.json` records the
 expanded suite after fixes. Python/build logs and live JSON reports are there.
 Launcher logs are under `logs/startup-*.log`.
 
+## Follow-up website check after the first push
+
+Commit `46c1a6e` was pushed and its hash verified on GitHub. A second complete
+website run again passed all 28 real Chrome checks and 25 layout checks. The
+expanded audit then reproduced the Windows production-preview failure above.
+
+The correction locks Wrangler 4.147.0 and Nitro 3.0.260903-beta, refreshes the
+affected dependency graph, and overrides Firestore's gRPC client to 1.13.6.
+The version choices were checked against the
+[Nitro release notes](https://github.com/nitrojs/nitro/releases/tag/v3.0.260903-beta),
+[maintainer gRPC advisory](https://github.com/grpc/grpc-node/security/advisories/GHSA-m9gg-hp2v-232j),
+and [Wrangler local command documentation](https://developers.cloudflare.com/workers/wrangler/commands/workers/).
+Firebase remains on its existing major version. The gRPC override should be
+revisited when Firestore updates its own dependency range.
+
+Retesting caught a development-only mismatch: the new Nitro dev runner selected
+the Miniflare 5 installed by Wrangler, while its current adapter expects the
+Miniflare 4 API. Vite's local runner is now explicitly `node-worker`; the built
+Cloudflare worker is tested using Wrangler. This preserves the local Node/FastAPI
+development workflow and exercises the production worker separately.
+
+The built-site acceptance passed **six workflow checks and 24 layout checks**:
+preview startup, real three-question quiz scoring/graphs, notebook review/reload,
+12 routes in each viewport with direct HTTP requests and client hydration, and
+the 404 screen. Runtime exceptions, API failures, broken images, and horizontal
+document overflow were all zero. The production checks use actual built assets
+and a local workerd runtime, temporary stores, and a new Chrome profile.
+The refreshed dependency tree passed a clean npm ci, zero-vulnerability audit,
+TypeScript, ESLint, production build, the 129 Python/12 extension tests, and all
+14 failure-injection checks.
+The final complete development run again passed all 28 checks and 25 layouts,
+and the final rebuilt production preview repeated all six checks and 24 layouts
+without runtime/API errors. Both production contact sheets were visually reviewed.
+The batch launcher's final prerequisite and startup/shutdown smoke checks passed
+with the refreshed dependency graph.
+
+The additional evidence is under `post-push/` (first follow-up and refreshed
+Python/build logs), `production/` (built-site checks and contact sheets), and
+`final/browser/` (final complete development-site rerun).
+
 ## Reproduce
 
 ```powershell
@@ -74,6 +117,8 @@ $env:CHAI_LIVE_CHECK_OUTPUT = 'benchmarks/results/demo-readiness-20261002/live_m
 python scripts/check_live_models.py
 $env:CHAI_BROWSER_CHECK_OUTPUT = 'benchmarks/results/demo-readiness-20261002/browser'
 python scripts/check_browser.py
+# After npm run build, with ports 8000/8080 free:
+python scripts/check_production_browser.py
 ```
 
 Run live model/browser scripts sequentially. Set disposable `DATABASE_URL` and
