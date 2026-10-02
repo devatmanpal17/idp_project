@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Literal
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from .selective_repair import repair_questions
-from .residency import residency
+from .residency import canonical_model, residency
 
 
 class LLMConfigurationError(RuntimeError):
@@ -165,7 +165,7 @@ class LLMService:
             with urllib.request.urlopen(f"{self.base_url}/api/tags", timeout=2) as response:
                 payload = json.loads(response.read().decode("utf-8"))
             names = [model.get("name", "") for model in payload.get("models", [])]
-            ready = any(name == self.model or name.startswith(f"{self.model}:") for name in names)
+            ready = any(canonical_model(name) == canonical_model(self.model) for name in names)
             return {"online": True, "model": self.model, "model_ready": ready, "models": names}
         except Exception:
             return {"online": False, "model": self.model, "model_ready": False, "models": []}

@@ -97,25 +97,27 @@ export function QuizGenerator({
   // Fetch from Python RAG backend
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     async function load() {
       setLoading(true);
       setStep(0);
       setMode("generating");
       setUserAnswers([]);
       setEvaluation(null);
+      setQuizData(null);
       setError(null);
 
       try {
         const data = await generateRAGQuiz({
           topic: topicTitle,
           mastery_score: masteryRef.current,
+          signal: controller.signal,
         });
         if (isMounted) {
           setQuizData(data);
           setUserAnswers(new Array(data.questions.length).fill(""));
         }
       } catch (err) {
-        console.error("Quiz RAG generation error:", err);
         if (isMounted)
           setError(
             err instanceof Error ? err.message : "Quiz generation failed.",
@@ -127,6 +129,7 @@ export function QuizGenerator({
     load();
     return () => {
       isMounted = false;
+      controller.abort();
     };
   }, [topicTitle, generation]);
 

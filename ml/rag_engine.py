@@ -65,7 +65,7 @@ class OllamaEmbeddings:
                 "online": True,
                 "embedding_model": self.model,
                 "embedding_model_ready": any(
-                    name == self.model or name.startswith(f"{self.model}:") for name in names
+                    canonical_model(name) == canonical_model(self.model) for name in names
                 ),
                 "models": names,
             }

@@ -22,6 +22,7 @@ import { checkAIHealth, type AIHealth } from "@/lib/ai-client";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PersonalChatbot } from "@/components/chaigaram/PersonalChatbot";
+import { readStorage, writeStorage } from "@/lib/storage";
 
 const NAV = [
   { to: "/", label: "Overview", icon: LayoutGrid },
@@ -40,7 +41,7 @@ const NAV = [
 function useTheme() {
   const [light, setLight] = useState(false);
   useEffect(() => {
-    const isLight = window.localStorage.getItem("chaigaram-theme") === "light";
+    const isLight = readStorage("chaigaram-theme") === "light";
     setLight(isLight);
     document.documentElement.classList.toggle("light", isLight);
   }, []);
@@ -48,7 +49,7 @@ function useTheme() {
     setLight((previous) => {
       const next = !previous;
       document.documentElement.classList.toggle("light", next);
-      window.localStorage.setItem("chaigaram-theme", next ? "light" : "dark");
+      writeStorage("chaigaram-theme", next ? "light" : "dark");
       return next;
     });
   return { light, toggle };
@@ -130,7 +131,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               />
               {ready
                 ? `${String(health?.indexed_chunks ?? 0)} notes indexed`
-                : "Engine offline"}
+                : health
+                  ? "AI setup required"
+                  : "Engine offline"}
             </div>
             <button
               onClick={toggle}

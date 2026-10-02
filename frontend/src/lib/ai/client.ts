@@ -2,6 +2,13 @@
 
 import type { QuizEvaluationResult, RAGChunk, RAGQuizResponse } from "./types";
 import { apiJSON } from "../api";
+import {
+  answerContract,
+  checkedPayload,
+  evaluationContract,
+  quizContract,
+} from "./contracts";
+import { z } from "zod";
 
 export interface AIHealth {
   status?: string;
@@ -27,7 +34,7 @@ export function checkAIHealth() {
 
 export async function fetchIndexedTopics(): Promise<string[]> {
   const result = await requestJSON<{ topics: string[] }>("/rag/topics");
-  return result.topics;
+  return checkedPayload(result.topics, z.array(z.string()), "indexed topics");
 }
 
 export function fetchTopicState(topic: string) {
@@ -74,14 +81,14 @@ export async function retrieveRAGChunks(
   return result.chunks;
 }
 
-export function askRAGAssistant(params: {
+export async function askRAGAssistant(params: {
   question: string;
   topic?: string;
   topK?: number;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
   signal?: AbortSignal;
 }) {
-  return requestJSON<{
+  const result = await requestJSON<{
     answer: string;
     active_provider?: string;
     sources: RAGChunk[];
@@ -96,9 +103,10 @@ export function askRAGAssistant(params: {
     }),
     ...(params.signal ? { signal: params.signal } : {}),
   });
+  return checkedPayload(result, answerContract, "assistant");
 }
 
-export function generateRAGQuiz(params: {
+export async function generateRAGQuiz(params: {
   topic: string;
   mastery_score?: number;
   quiz_perf_pct?: number;
@@ -106,9 +114,11 @@ export function generateRAGQuiz(params: {
   revisit_frequency_pct?: number;
   recent_errors?: string[];
   question_count?: number;
+  signal?: AbortSignal;
 }): Promise<RAGQuizResponse> {
-  return requestJSON<RAGQuizResponse>("/rag/generate-quiz", {
+  const result = await requestJSON<RAGQuizResponse>("/rag/generate-quiz", {
     method: "POST",
+    ...(params.signal ? { signal: params.signal } : {}),
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       topic: params.topic,
@@ -120,15 +130,16 @@ export function generateRAGQuiz(params: {
       question_count: params.question_count ?? 3,
     }),
   });
+  return checkedPayload(result, quizContract, "quiz");
 }
 
-export function evaluateRAGQuiz(params: {
+export async function evaluateRAGQuiz(params: {
   quiz_id: string;
   topic: string;
   given_answers: string[];
   current_mastery?: number;
 }): Promise<QuizEvaluationResult> {
-  return requestJSON<QuizEvaluationResult>("/rag/evaluate-quiz", {
+  const result = await requestJSON<QuizEvaluationResult>("/rag/evaluate-quiz", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -138,6 +149,7 @@ export function evaluateRAGQuiz(params: {
       current_mastery: params.current_mastery ?? 0,
     }),
   });
+  return checkedPayload(result, evaluationContract, "assessment");
 }
 
 export function streamSimulatorTranscript(params: {

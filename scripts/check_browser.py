@@ -167,6 +167,16 @@ def main():
             until(lambda: click('Index in ChromaDB', session))
             until(lambda: cdp.evaluate("document.body.innerText.includes('Indexed 1 semantic chunks')", session), 180)
             record('dashboard_document_ingestion')
+            cdp.evaluate("document.querySelector('[aria-label=\"Open personal assistant\"]').click()",session)
+            until(lambda: cdp.evaluate("document.querySelector('[aria-label=\"Message Chai\"]').getBoundingClientRect().height > 0",session))
+            cdp.evaluate("document.querySelector('[aria-label=\"Message Chai\"]').focus()",session)
+            cdp.call('Input.insertText',{'text':'Why must the values be sorted before binary search?'},session)
+            cdp.evaluate("document.querySelector('[aria-label=\"Send message\"]').click()",session)
+            until(lambda: cdp.evaluate("document.querySelectorAll('aside [aria-live=\"polite\"] p').length >= 3 && !document.querySelector('[aria-label=\"Stop response\"]')",session),90)
+            assert not cdp.evaluate("[...document.querySelectorAll('aside button')].some(button=>button.textContent.trim()==='Retry response')",session)
+            assert cdp.evaluate("[...document.querySelectorAll('aside [aria-live=\"polite\"] p')].at(-1).textContent.length > 20",session)
+            record('dashboard_live_chat')
+            cdp.evaluate("document.querySelector('[aria-label=\"Minimize assistant\"]').click()",session)
             skip_quiz = os.environ.get('BROWSER_SKIP_LIVE_QUIZ') == '1'
             report['live_quiz_skipped'] = skip_quiz
             if not skip_quiz:

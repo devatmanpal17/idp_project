@@ -239,7 +239,7 @@ Interactive API documentation is available at `http://127.0.0.1:8000/docs` while
 ## Prerequisites
 
 - Python 3.10 or newer
-- Node.js 18 or newer
+- Node.js 22.12 or newer (required by the installed TanStack Start/Vite versions)
 - npm
 - Ollama
 - Chrome or Microsoft Edge for the extension
@@ -259,7 +259,7 @@ Ensure Ollama is running at `http://127.0.0.1:11434`.
 
 ```powershell
 cd chaigaram
-pip install -r backend/requirements.txt
+python -m pip install -r backend/requirements.txt
 python -m uvicorn backend.app:app --port 8000 --reload
 ```
 
@@ -269,8 +269,8 @@ In a second terminal:
 
 ```powershell
 cd chaigaram/frontend
-npm install
-npm run dev
+npm ci
+npm run dev -- --strictPort
 ```
 
 Open `http://localhost:8080`.
@@ -284,7 +284,17 @@ cd chaigaram
 .\start_all.bat
 ```
 
-The launcher installs dependencies, builds the frontend, and starts both servers. It does not install or start Ollama.
+The launcher installs missing dependencies using the active Python interpreter
+and `npm ci`, then checks ports and exact model tags. It starts local Ollama when
+needed, waits for backend/model and frontend readiness, and opens the dashboard.
+Models must already be downloaded. Keep the launcher window open; Ctrl+C stops
+the services it started. Logs are saved under `logs/startup-*.log`.
+
+Use `.\start_all.bat --check` for a read-only prerequisite check (Ollama must be
+running), `--install` to reinstall dependencies, or `--smoke-test` to start,
+verify, and stop the services without opening a browser. Regular startup serves
+the frontend with Vite; production builds are checked separately with
+`npm run build`.
 
 ## Browser-extension installation
 
@@ -390,8 +400,11 @@ retains its earlier results. Run `python scripts/check_patent_features.py` for r
 cache, transfer, lease, and restart checks on disposable caption data. Run live
 browser/model checks separately from large benchmarks to reduce resource contention.
 
+The [demo readiness audit](docs/DEMO_READINESS_2026-10-02.md) covers startup,
+browser storage failures, request recovery, stale Practice data, and model checks.
+
 The [Mistake Notebook verification](docs/MISTAKE_NOTEBOOK_VERIFICATION_2026-10-02.md)
-records the current full app checks, including the new review workflow and its
+records the preceding full app checks, including the review workflow and its
 interaction with quiz evidence holds.
 
 ## Current limitations
@@ -404,7 +417,7 @@ interaction with quiz evidence holds.
 - The active generator and its calibration metadata support MCQs only.
 - Difficulty currently uses mastery and recent errors; other signals are displayed but do not directly change difficulty.
 - Firebase protects profile documents only, not ChromaDB or quiz analytics.
-- `start_all.bat` does not verify or start Ollama.
+- Browser storage is optional: if blocked or full, chat and theme work for the current session but might not persist after reload.
 
 ## Privacy
 

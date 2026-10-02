@@ -24,6 +24,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { askRAGAssistant } from "@/lib/ai-client";
 import { coursesQuery, recommendationsQuery, topicsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
+import { readStorage, removeStorage, writeStorage } from "@/lib/storage";
 
 type ChatMessage = {
   id: string;
@@ -47,6 +48,7 @@ const PAGE_NAMES: Record<string, string> = {
   "/courses": "Courses",
   "/mastery": "Mastery",
   "/quizzes": "Practice",
+  "/mistakes": "Mistakes",
   "/study-plan": "Study plan",
   "/recommendations": "Recommendations",
   "/history": "History",
@@ -57,6 +59,23 @@ const PAGE_NAMES: Record<string, string> = {
 
 function messageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function isChatMessage(value: unknown): value is ChatMessage {
+  if (!value || typeof value !== "object") return false;
+  const message = value as Partial<ChatMessage>;
+  return (
+    typeof message.id === "string" &&
+    message.id.length > 0 &&
+    (message.role === "assistant" || message.role === "user") &&
+    typeof message.text === "string" &&
+    (message.sources === undefined ||
+      (Array.isArray(message.sources) &&
+        message.sources.every((source) => typeof source === "string"))) &&
+    (message.error === undefined || typeof message.error === "boolean") &&
+    (message.retryQuestion === undefined ||
+      typeof message.retryQuestion === "string")
+  );
 }
 
 function compactSource(source: string) {
@@ -90,22 +109,23 @@ export function PersonalChatbot() {
 
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
+      const saved = readStorage(STORAGE_KEY);
       if (saved) {
         const parsed: unknown = JSON.parse(saved);
-        if (Array.isArray(parsed)) setMessages(parsed as ChatMessage[]);
+        if (Array.isArray(parsed)) {
+          setMessages(parsed.filter(isChatMessage).slice(-30));
+        } else {
+          removeStorage(STORAGE_KEY);
+        }
       }
     } catch {
-      window.localStorage.removeItem(STORAGE_KEY);
+      removeStorage(STORAGE_KEY);
     }
   }, []);
 
   useEffect(() => {
     if (!messages.length) return;
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(messages.slice(-30)),
-    );
+    writeStorage(STORAGE_KEY, JSON.stringify(messages.slice(-30)));
   }, [messages]);
 
   useEffect(() => {
@@ -219,6 +239,7 @@ export function PersonalChatbot() {
     setInput("");
     setThinking(true);
     const requestId = ++requestIdRef.current;
+    let timedOut = false;
 
     try {
       const instant = localAnswer(question);
@@ -234,7 +255,10 @@ export function PersonalChatbot() {
 
       const controller = new AbortController();
       activeRequestRef.current = controller;
-      const timeout = window.setTimeout(() => controller.abort(), 60_000);
+      const timeout = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, 60_000);
       let result: Awaited<ReturnType<typeof askRAGAssistant>>;
       try {
         result = await askRAGAssistant({
@@ -268,7 +292,9 @@ export function PersonalChatbot() {
       const stopped =
         reason instanceof DOMException && reason.name === "AbortError";
       const detail = stopped
-        ? "I stopped that response."
+        ? timedOut
+          ? "The response timed out. Check Ollama and try again."
+          : "I stopped that response."
         : reason instanceof Error
           ? reason.message
           : "I couldn’t answer that.";
@@ -303,7 +329,7 @@ export function PersonalChatbot() {
     activeRequestRef.current = null;
     setThinking(false);
     setMessages([]);
-    window.localStorage.removeItem(STORAGE_KEY);
+    removeStorage(STORAGE_KEY);
     inputRef.current?.focus();
   }
 
@@ -348,7 +374,7 @@ export function PersonalChatbot() {
               <Sparkles className="h-3.5 w-3.5 text-primary" />
             </div>
             <p className="mt-0.5 text-[10px] font-medium text-positive">
-              Online · grounded in your lessons
+              Ask about your saved lessons
             </p>
           </div>
           <button

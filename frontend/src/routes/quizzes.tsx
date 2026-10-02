@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
   ChevronRight,
@@ -20,7 +20,6 @@ import {
   topicsQuery,
   coursesQuery,
   relativeTime,
-  type Quiz,
 } from "@/lib/chaigaram";
 import {
   Panel,
@@ -44,43 +43,33 @@ export const Route = createFileRoute("/quizzes")({
 });
 
 function QuizzesScreen() {
+  const queryClient = useQueryClient();
   const { data: quizzes = [] } = useQuery(quizzesQuery);
   const { data: topics = [] } = useQuery(topicsQuery);
   const { data: courses = [] } = useQuery(coursesQuery);
 
-  const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(
-    quizzes[0] || null,
-  );
+  const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
+  const selectedQuiz =
+    quizzes.find((quiz) => quiz.id === selectedQuizId) ?? quizzes[0] ?? null;
   const [generatorOpen, setGeneratorOpen] = useState(false);
-  const [quizTopic, setQuizTopic] = useState("");
-  const [indexedTopics, setIndexedTopics] = useState<string[]>([]);
+  const [preferredTopic, setPreferredTopic] = useState("");
+  const { data: indexedTopics = [], isPending: topicsPending } = useQuery({
+    queryKey: ["indexed-topics"],
+    queryFn: fetchIndexedTopics,
+    staleTime: 5_000,
+    refetchInterval: 15_000,
+  });
   const [sourceTitle, setSourceTitle] = useState("");
   const [sourceTopic, setSourceTopic] = useState("");
   const [sourceContent, setSourceContent] = useState("");
   const [ingesting, setIngesting] = useState(false);
   const [ingestMessage, setIngestMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchIndexedTopics()
-      .then(setIndexedTopics)
-      .catch(() => setIndexedTopics([]));
-  }, []);
-
-  const availableTopics = useMemo(
-    () =>
-      Array.from(
-        new Set([...indexedTopics, ...topics.map((topic) => topic.title)]),
-      ),
-    [indexedTopics, topics],
-  );
-
-  useEffect(() => {
-    if (!quizTopic && availableTopics[0]) setQuizTopic(availableTopics[0]);
-  }, [availableTopics, quizTopic]);
-
-  useEffect(() => {
-    if (!selectedQuiz && quizzes[0]) setSelectedQuiz(quizzes[0]);
-  }, [quizzes, selectedQuiz]);
+  // Assessment telemetry alone is not retrievable lesson evidence.
+  const availableTopics = indexedTopics;
+  const quizTopic = availableTopics.includes(preferredTopic)
+    ? preferredTopic
+    : (availableTopics[0] ?? "");
 
   async function handleIngest() {
     setIngesting(true);
@@ -94,8 +83,9 @@ function QuizzesScreen() {
       setIngestMessage(
         `Indexed ${result.chunks_indexed} semantic chunks in ChromaDB.`,
       );
-      setQuizTopic(sourceTopic);
-      setIndexedTopics(await fetchIndexedTopics());
+      setPreferredTopic(sourceTopic.trim());
+      void queryClient.invalidateQueries({ queryKey: ["indexed-topics"] });
+      void queryClient.invalidateQueries({ queryKey: ["learning-data"] });
       setSourceContent("");
     } catch (error) {
       setIngestMessage(
@@ -129,13 +119,25 @@ function QuizzesScreen() {
           </Link>
           <button
             onClick={() => setGeneratorOpen(true)}
-            className="inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-xs font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90"
+            disabled={!quizTopic}
+            title={
+              !quizTopic ? "Index a lesson before generating a quiz" : undefined
+            }
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-3.5 py-2 text-xs font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Wand2 className="h-4 w-4" />
             Generate New AI Practice Quiz
           </button>
         </div>
       </div>
+
+      {!quizTopic && (
+        <p className="text-xs text-muted-foreground" role="status">
+          {topicsPending
+            ? "Checking indexed lessons…"
+            : "Index a lesson below or capture one with the extension to start practicing."}
+        </p>
+      )}
 
       <Panel className="border-accent/30 p-5">
         <div className="mb-3 flex items-center gap-2">
@@ -212,7 +214,7 @@ function QuizzesScreen() {
             <div className="flex items-center gap-3">
               <select
                 value={quizTopic}
-                onChange={(e) => setQuizTopic(e.target.value)}
+                onChange={(e) => setPreferredTopic(e.target.value)}
                 className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
               >
                 {availableTopics.map((title) => (
@@ -231,15 +233,23 @@ function QuizzesScreen() {
             </div>
           </div>
 
-          <QuizGenerator
-            topicTitle={quizTopic}
-            masteryScore={
-              topics.find((t) => t.title === quizTopic)?.mastery_score ?? 0
-            }
-            onMasteryUpdated={(newScore) => {
-              console.log("Mastery updated to:", newScore);
-            }}
-          />
+          {quizTopic ? (
+            <QuizGenerator
+              key={quizTopic}
+              topicTitle={quizTopic}
+              masteryScore={
+                topics.find((t) => t.title === quizTopic)?.mastery_score ?? 0
+              }
+              onMasteryUpdated={(newScore) => {
+                console.log("Mastery updated to:", newScore);
+              }}
+            />
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              This lesson is no longer indexed. Capture or index a lesson to
+              generate a quiz.
+            </p>
+          )}
         </Panel>
       )}
 
@@ -260,7 +270,7 @@ function QuizzesScreen() {
               return (
                 <div
                   key={quiz.id}
-                  onClick={() => setSelectedQuiz(quiz)}
+                  onClick={() => setSelectedQuizId(quiz.id)}
                   className={`cursor-pointer rounded-md p-3 transition-colors ${
                     isSelected
                       ? "border border-primary/40 bg-primary/10"
@@ -332,11 +342,17 @@ function QuizzesScreen() {
                 </div>
 
                 <button
+                  disabled={
+                    !availableTopics.includes(
+                      topics.find((t) => t.id === selectedQuiz.topic_id)
+                        ?.title ?? "",
+                    )
+                  }
                   onClick={() => {
                     const title = topics.find(
                       (t) => t.id === selectedQuiz.topic_id,
                     )?.title;
-                    if (title) setQuizTopic(title);
+                    if (title) setPreferredTopic(title);
                     setGeneratorOpen(true);
                   }}
                   className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
