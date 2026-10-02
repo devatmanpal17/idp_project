@@ -10,7 +10,7 @@ from pathlib import Path
 # Load .env from project root (chaigaram-insight/.env)
 _env_path = Path(__file__).resolve().parent.parent / ".env"
 if _env_path.exists():
-    with open(_env_path) as f:
+    with open(_env_path, encoding='utf-8-sig') as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
@@ -64,7 +64,7 @@ app.add_exception_handler(RequestValidationError, request_validation_error)
 # Enable CORS for local development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv('CORS_ORIGINS', 'http://localhost:8080,http://127.0.0.1:8080').split(','),
+    allow_origins=[origin.strip() for origin in os.getenv('CORS_ORIGINS', 'http://localhost:8080,http://127.0.0.1:8080').split(',') if origin.strip()],
     allow_origin_regex=r'chrome-extension://[a-p]{32}',
     allow_credentials=False,
     allow_methods=["*"],

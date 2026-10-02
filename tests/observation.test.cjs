@@ -30,19 +30,60 @@ test('fractional frame boundaries do not invent holes in continuous playback', (
   assert.deepEqual(tracker.intervals, [[101, 300], [501, 600]]);
 });
 
-test('frame observation uses display timestamps despite callback and submission jitter', () => {
+test('frame observation follows the playback clock when submitted timestamps jump ahead', () => {
   const previousDocument = globalThis.document;
   globalThis.document = { hidden: false, addEventListener() {}, removeEventListener() {} };
   let callback;
-  const video = { paused: false, seeking: false, ended: false, readyState: 4, playbackRate: 1,
+  const video = { currentTime: 0, paused: false, seeking: false, ended: false, readyState: 4, playbackRate: 1,
     addEventListener() {}, removeEventListener() {}, cancelVideoFrameCallback() {},
     requestVideoFrameCallback(next) { callback = next; return 1; } };
   try {
     const observation = attach(video);
-    callback(1000, { mediaTime: 0, presentationTime: 0, expectedDisplayTime: 0 });
-    callback(1100, { mediaTime: .1, presentationTime: 100, expectedDisplayTime: 100 });
-    callback(1105, { mediaTime: .2, presentationTime: 105, expectedDisplayTime: 200 });
+    callback(1000, { mediaTime: 0, presentedFrames: 1, expectedDisplayTime: 1100 });
+    video.currentTime = .1;
+    callback(1100, { mediaTime: .1, presentedFrames: 2, expectedDisplayTime: 1200 });
+    video.currentTime = .2;
+    callback(1200, { mediaTime: .4, presentedFrames: 3, expectedDisplayTime: 1300 });
     assert.deepEqual(observation.tracker.intervals, [[0, 200]]);
+    assert.equal(observation.tracker.covers(300, 400), false, 'Future submitted frame did not unlock future captions');
+    video.currentTime = .3;
+    callback(1300, { mediaTime: .5, presentedFrames: 3 });
+    assert.deepEqual(observation.tracker.intervals, [[0, 200]], 'Repeated frame is not playback evidence');
+    video.currentTime = .4;
+    callback(1400, { mediaTime: .6, presentedFrames: 4 });
+    video.currentTime = .5;
+    callback(1500, { mediaTime: .7, presentedFrames: 5 });
+    assert.deepEqual(observation.tracker.intervals, [[0, 200], [400, 500]]);
+    video.currentTime = 5;
+    callback(1600, { mediaTime: 5, presentedFrames: 6 });
+    assert.equal(observation.tracker.covers(500, 5000), false, 'Unannounced jump remains blocked');
+    observation.detach();
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
+test('rendered-frame playback rejects hidden, stalled and seeking spans', () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = { hidden: false, addEventListener() {}, removeEventListener() {} };
+  let callback;
+  const video = { currentTime: 0, paused: false, seeking: false, ended: false, readyState: 4, playbackRate: 1,
+    addEventListener() {}, removeEventListener() {}, cancelVideoFrameCallback() {},
+    requestVideoFrameCallback(next) { callback = next; return 1; } };
+  try {
+    const observation = attach(video);
+    let frame = 0;
+    const sample = (media, wall) => {
+      video.currentTime = media;
+      callback(wall, { presentedFrames: ++frame, mediaTime: media + .2 });
+    };
+    sample(0, 0); sample(.1, 100);
+    document.hidden = true; sample(.2, 200);
+    document.hidden = false; sample(.3, 300); sample(.4, 400);
+    sample(1.9, 1900); sample(2, 2000);
+    video.seeking = true; sample(8, 2100);
+    video.seeking = false; sample(8.1, 2200); sample(8.2, 2300);
+    assert.deepEqual(observation.tracker.intervals, [[0, 100], [300, 400], [1900, 2000], [8100, 8200]]);
     observation.detach();
   } finally {
     globalThis.document = previousDocument;

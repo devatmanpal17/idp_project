@@ -40,6 +40,9 @@ Interactive video actions finish embedding the observed caption batches before g
 The YouTube F1 path binds observation uploads to the revision hash returned by
 its durable sealing job. Reload the extension after updating the backend: old
 clients without a revision are rejected, and must recapture the track. Playback
-tracking uses frame display timestamps when available and rounds each validated
-traversal's outer bounds once, preserving fractional frame continuity while
-keeping seek, hidden-playback, and callback-stall gaps separate.
+tracking samples the caption playback clock only on advancing rendered-frame
+callbacks. Submitted-frame timestamps can lead the playhead, so they cannot
+unlock future captions. Each validated traversal's outer bounds are rounded
+once, preserving fractional continuity while keeping seek, hidden-playback,
+duplicate-frame, and callback-stall gaps separate. The decoded-frame-counter
+fallback retains the same playback and elapsed-time guards.

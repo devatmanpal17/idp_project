@@ -11,8 +11,8 @@
       this.previous = { mediaMs, wallMs, rate };
       if (!last) { this.runStart = mediaMs; return; }
       const elapsed = wallMs - last.wallMs, delta = mediaMs - last.mediaMs;
-      // Bound callback stalls to 1s and media movement to elapsed time plus 1 frame
-      // (50ms permits <=20fps material). Never merge a positive seek gap.
+      // Bound callback stalls to 1s and media movement to elapsed time plus
+      // 50ms of clock jitter. Never merge a positive seek gap.
       if (elapsed <= 0 || elapsed > 1000 || delta <= 0 || last.rate !== rate ||
           delta > elapsed * rate + 50) { this.runStart = mediaMs; return; }
       // Round the validated traversal's outer bounds once. Rounding each
@@ -43,7 +43,7 @@
 
   function attach(video, { visible = () => !document.hidden, allowed = () => true } = {}) {
     const tracker = new ObservationTracker();
-    let frameId, stopped = false;
+    let frameId, stopped = false, presentedFrames;
     const reset = () => tracker.breakTraversal();
     const events = ['play', 'pause', 'seeking', 'seeked', 'ratechange', 'waiting', 'stalled', 'ended'];
     events.forEach(event => video.addEventListener(event, reset));
@@ -51,11 +51,16 @@
     const eligible = () => !video.paused && !video.seeking && !video.ended &&
       video.readyState >= 2 && visible() && allowed();
     const frame = (now, metadata) => {
-      // Submission and callback clocks can jitter when frames are queued.
-      // The expected display clock follows the frame's presentation schedule.
-      const wall = Number.isFinite(metadata.expectedDisplayTime) ? metadata.expectedDisplayTime
-        : Number.isFinite(metadata.presentationTime) ? metadata.presentationTime : now;
-      tracker.sample(metadata.mediaTime * 1000, wall, video.playbackRate, eligible());
+      // mediaTime describes a submitted frame and may lead the playhead (seen
+      // with low-frame-rate VP9). Captions follow currentTime. Witness playback
+      // progress only when a new frame is submitted, using the matching callback
+      // clock rather than a future expectedDisplayTime. Seek/stall/visibility
+      // guards still break traversal; a playhead alone is never evidence.
+      const next = metadata.presentedFrames;
+      const fresh = Number.isFinite(next) &&
+        (presentedFrames === undefined || next > presentedFrames);
+      tracker.sample(video.currentTime * 1000, now, video.playbackRate, eligible() && fresh);
+      presentedFrames = next;
       if (!stopped) frameId = video.requestVideoFrameCallback(frame);
     };
     // Fallback requires decoded-frame counter advancement as well as playback events.

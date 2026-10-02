@@ -377,7 +377,9 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=
 VITE_FIREBASE_APP_ID=
 ```
 
-Enable Google authentication, create Firestore, and publish `frontend/firestore.rules`. See `frontend/FIREBASE_SETUP.md` for details.
+Enable Google authentication, create Firestore, and publish `frontend/firestore.rules`.
+See the [Firebase setup guide](frontend/FIREBASE_SETUP.md) for required/optional
+values, popup sign-in, profile recovery, and hosted dashboard configuration.
 
 ## Tests and verification
 
@@ -391,7 +393,16 @@ python -m unittest discover -s tests -v
 Run extension behavior checks:
 
 ```powershell
-node --test tests/observation.test.cjs tests/extension_jobs.test.cjs tests/connection.test.cjs
+node --test tests/observation.test.cjs tests/extension_jobs.test.cjs tests/connection.test.cjs tests/extension_scopes.test.cjs
+```
+
+Run isolated account failure checks in real Chrome (Firebase SDK boundaries are
+mocked; no Google account or remote profile is used):
+
+```powershell
+python -m pip install -r tests/browser-requirements.txt
+python scripts/check_auth_browser.py
+python scripts/check_observation_browser.py
 ```
 
 Type-check, lint, and build the frontend:

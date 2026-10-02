@@ -1,4 +1,4 @@
-import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
+import { getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 
@@ -11,9 +11,12 @@ const firebaseConfig = {
   appId: import.meta.env["VITE_FIREBASE_APP_ID"],
 };
 
-export const isFirebaseConfigured = Object.values(firebaseConfig).every(
-  (value) => typeof value === "string" && value.trim().length > 0,
-);
+export const isFirebaseConfigured = [
+  firebaseConfig.apiKey,
+  firebaseConfig.authDomain,
+  firebaseConfig.projectId,
+  firebaseConfig.appId,
+].every((value) => typeof value === "string" && value.trim().length > 0);
 
 export interface FirebaseServices {
   app: FirebaseApp;
@@ -27,7 +30,9 @@ export function getFirebaseServices(): FirebaseServices | null {
   if (typeof window === "undefined" || !isFirebaseConfigured) return null;
   if (services) return services;
 
-  const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+  const app =
+    getApps().find((candidate) => candidate.name === "[DEFAULT]") ??
+    initializeApp(firebaseConfig);
   services = { app, auth: getAuth(app), db: getFirestore(app) };
   return services;
 }

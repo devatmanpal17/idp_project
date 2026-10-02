@@ -4,20 +4,22 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import {
   GoogleAuthProvider,
   browserLocalPersistence,
+  inMemoryPersistence,
   getRedirectResult,
   onAuthStateChanged,
   setPersistence,
   signInWithPopup,
-  signInWithRedirect,
   signOut as firebaseSignOut,
   updateProfile as updateFirebaseProfile,
   type User,
+  type Auth,
 } from "firebase/auth";
 import {
   doc,
@@ -49,6 +51,7 @@ export interface ProfileUpdates {
 interface AuthContextValue {
   user: User | null;
   profile: UserProfile | null;
+  profileLoaded: boolean;
   loading: boolean;
   configured: boolean;
   error: string | null;
@@ -59,6 +62,36 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const PROFILE_TIMEOUT_MS = 15_000;
+
+async function withDeadline<T>(
+  request: Promise<T>,
+  message: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      request,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(message)),
+          PROFILE_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function configurePersistence(auth: Auth) {
+  try {
+    await setPersistence(auth, browserLocalPersistence);
+  } catch {
+    // Sign-in can still work when the browser blocks durable storage.
+    await setPersistence(auth, inMemoryPersistence);
+  }
+}
 
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
@@ -70,7 +103,7 @@ function errorMessage(error: unknown) {
     "code" in error &&
     error.code === "auth/unauthorized-domain"
   ) {
-    return "This address is not authorized by Firebase. Open the dashboard at http://localhost:8080 and try again.";
+    return "This address is not authorized by Firebase. Use the configured dashboard address or add this domain in Firebase Authentication settings.";
   }
   if (error instanceof Error)
     return error.message.replace(/^Firebase:\s*/i, "");
@@ -98,94 +131,143 @@ function profileFrom(user: User, data?: DocumentData): UserProfile {
 
 async function syncUserProfile(user: User) {
   const services = getFirebaseServices();
-  if (!services) return profileFrom(user);
+  if (!services) throw new Error("Firebase is not configured.");
 
   const profileRef = doc(services.db, "users", user.uid);
   const snapshot = await getDoc(profileRef);
   const existing = snapshot.exists() ? snapshot.data() : undefined;
   const profile = profileFrom(user, existing);
 
-  await setDoc(
-    profileRef,
-    {
-      uid: user.uid,
-      displayName: profile.displayName,
-      email: user.email ?? "",
-      photoURL: user.photoURL ?? "",
-      bio: profile.bio,
-      learningGoal: profile.learningGoal,
-      preferredLanguage: profile.preferredLanguage,
-      ...(snapshot.exists() ? {} : { createdAt: serverTimestamp() }),
-      lastLoginAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true },
-  );
-
-  return profile;
+  return { profile, exists: snapshot.exists() };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [configured, setConfigured] = useState(isFirebaseConfigured);
+  const session = useRef({
+    active: false,
+    generation: 0,
+    uid: null as string | null,
+  });
+  const persistence = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
-    const services = getFirebaseServices();
-    if (!services) {
-      setLoading(false);
-      return;
-    }
-
-    void setPersistence(services.auth, browserLocalPersistence).catch(
-      (reason: unknown) => {
-        setError(errorMessage(reason));
-      },
-    );
-    void getRedirectResult(services.auth).catch((reason: unknown) => {
-      setError(errorMessage(reason));
-    });
-
-    return onAuthStateChanged(services.auth, (nextUser) => {
-      setUser(nextUser);
-      setError(null);
-      if (!nextUser) {
-        setProfile(null);
+    session.current.active = true;
+    let unsubscribe: (() => void) | undefined;
+    let initialTimer: ReturnType<typeof setTimeout> | undefined;
+    const dispose = () => {
+      session.current.active = false;
+      session.current.generation++;
+      session.current.uid = null;
+      clearTimeout(initialTimer);
+      unsubscribe?.();
+    };
+    try {
+      const services = getFirebaseServices();
+      if (!services) {
         setLoading(false);
-        return;
+        return dispose;
       }
 
-      setLoading(true);
-      void syncUserProfile(nextUser)
-        .then(setProfile)
-        .catch((reason: unknown) => setError(errorMessage(reason)))
-        .finally(() => setLoading(false));
-    });
+      persistence.current = configurePersistence(services.auth);
+      void persistence.current.catch((reason: unknown) => {
+        if (session.current.active) setError(errorMessage(reason));
+      });
+      void getRedirectResult(services.auth).catch((reason: unknown) => {
+        if (session.current.active) setError(errorMessage(reason));
+      });
+
+      initialTimer = setTimeout(() => {
+        if (session.current.active) {
+          setLoading(false);
+          setError(
+            "Sign-in state could not be checked in time. Reload and try again.",
+          );
+        }
+      }, PROFILE_TIMEOUT_MS);
+
+      unsubscribe = onAuthStateChanged(services.auth, (nextUser) => {
+        clearTimeout(initialTimer);
+        const generation = ++session.current.generation;
+        session.current.uid = nextUser?.uid ?? null;
+        const current = () =>
+          session.current.active && session.current.generation === generation;
+        setUser(nextUser);
+        setProfileLoaded(false);
+        setError(null);
+        if (!nextUser) {
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+
+        setLoading(true);
+        setProfile(profileFrom(nextUser));
+        void withDeadline(
+          syncUserProfile(nextUser),
+          "Your saved profile could not be loaded in time. Your Google identity is available; reload to try again.",
+        )
+          .then(({ profile: loadedProfile, exists }) => {
+            if (!current()) return;
+            setProfile(loadedProfile);
+            setProfileLoaded(true);
+            // A new document needs all fields required by firestore.rules;
+            // the first explicit save creates it with a complete profile.
+            if (!exists) return;
+            // Login metadata must not block the form or overwrite editable fields
+            // saved in another tab while this profile was being read.
+            void withDeadline(
+              setDoc(
+                doc(services.db, "users", nextUser.uid),
+                {
+                  uid: nextUser.uid,
+                  email: nextUser.email ?? "",
+                  photoURL: nextUser.photoURL ?? "",
+                  lastLoginAt: serverTimestamp(),
+                },
+                { merge: true },
+              ),
+              "Login details could not sync in time. Your profile is still available.",
+            ).catch((reason: unknown) => {
+              if (current()) setError(errorMessage(reason));
+            });
+          })
+          .catch((reason: unknown) => {
+            if (current()) setError(errorMessage(reason));
+          })
+          .finally(() => {
+            if (current()) setLoading(false);
+          });
+      });
+    } catch (reason) {
+      clearTimeout(initialTimer);
+      setConfigured(false);
+      setError(errorMessage(reason));
+      setLoading(false);
+    }
+    return dispose;
   }, []);
 
   const signInWithGoogle = useCallback(async () => {
-    const services = getFirebaseServices();
-    if (!services) {
-      setError(
-        "Firebase is not configured yet. Add the VITE_FIREBASE_* values and restart the dashboard.",
-      );
-      return;
-    }
-
-    setError(null);
     try {
-      if (window.location.hostname === "127.0.0.1") {
-        const authorizedUrl = new URL(window.location.href);
-        authorizedUrl.hostname = "localhost";
-        window.location.assign(authorizedUrl);
+      const services = getFirebaseServices();
+      if (!services) {
+        setError(
+          "Firebase is not configured yet. Add the VITE_FIREBASE_* values and restart the dashboard.",
+        );
         return;
       }
 
-      await setPersistence(services.auth, browserLocalPersistence);
-      const useRedirect = window.matchMedia("(max-width: 767px)").matches;
-      if (useRedirect) await signInWithRedirect(services.auth, googleProvider);
-      else await signInWithPopup(services.auth, googleProvider);
+      setError(null);
+      await withDeadline(
+        persistence.current ?? configurePersistence(services.auth),
+        "Sign-in setup timed out. Reload and try again.",
+      );
+      await signInWithPopup(services.auth, googleProvider);
     } catch (reason) {
       setError(errorMessage(reason));
       throw reason;
@@ -193,10 +275,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    const services = getFirebaseServices();
-    if (!services) return;
-    setError(null);
     try {
+      const services = getFirebaseServices();
+      if (!services) return;
+      setError(null);
       await firebaseSignOut(services.auth);
     } catch (reason) {
       setError(errorMessage(reason));
@@ -209,9 +291,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const services = getFirebaseServices();
       if (!services || !user)
         throw new Error("Sign in before updating your profile.");
+      const generation = session.current.generation;
+      const current = () =>
+        session.current.active &&
+        session.current.generation === generation &&
+        session.current.uid === user.uid;
+      const requireCurrent = () => {
+        if (!current())
+          throw new Error(
+            "Your account changed. Save again from your current profile.",
+          );
+      };
 
       setError(null);
       try {
+        if (!profileLoaded)
+          throw new Error(
+            "Your saved profile is unavailable. Reload before editing to avoid replacing existing details.",
+          );
         const clean = {
           displayName: updates.displayName.trim().slice(0, 80),
           bio: updates.bio.trim().slice(0, 500),
@@ -219,43 +316,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           preferredLanguage:
             updates.preferredLanguage.trim().slice(0, 40) || "English",
         };
-        await updateFirebaseProfile(user, { displayName: clean.displayName });
-        await setDoc(
-          doc(services.db, "users", user.uid),
-          {
-            uid: user.uid,
-            ...clean,
-            email: user.email ?? "",
-            photoURL: user.photoURL ?? "",
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true },
+        requireCurrent();
+        await withDeadline(
+          updateFirebaseProfile(user, { displayName: clean.displayName }),
+          "Updating your Google display name timed out. Reload before retrying.",
         );
+        requireCurrent();
+        await withDeadline(
+          setDoc(
+            doc(services.db, "users", user.uid),
+            {
+              uid: user.uid,
+              ...clean,
+              email: user.email ?? "",
+              photoURL: user.photoURL ?? "",
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true },
+          ),
+          "Saving your profile timed out. Changes may still sync when you reconnect. Reload before retrying.",
+        );
+        requireCurrent();
         setProfile((current) => ({
-          ...(current ?? profileFrom(user)),
+          ...(current?.uid === user.uid ? current : profileFrom(user)),
           ...clean,
         }));
       } catch (reason) {
-        setError(errorMessage(reason));
+        if (current()) setError(errorMessage(reason));
         throw reason;
       }
     },
-    [user],
+    [profileLoaded, user],
   );
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       profile,
+      profileLoaded,
       loading,
-      configured: isFirebaseConfigured,
+      configured,
       error,
       signInWithGoogle,
       signOut,
       saveProfile,
       clearError: () => setError(null),
     }),
-    [error, loading, profile, saveProfile, signInWithGoogle, signOut, user],
+    [
+      configured,
+      error,
+      loading,
+      profile,
+      profileLoaded,
+      saveProfile,
+      signInWithGoogle,
+      signOut,
+      user,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

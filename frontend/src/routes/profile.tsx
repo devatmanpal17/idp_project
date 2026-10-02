@@ -56,9 +56,15 @@ function GoogleMark() {
 }
 
 function ProfileScreen() {
+  const { user } = useAuth();
+  return <ProfileContent key={user?.uid ?? "signed-out"} />;
+}
+
+function ProfileContent() {
   const {
     user,
     profile,
+    profileLoaded,
     loading,
     configured,
     error,
@@ -72,7 +78,10 @@ function ProfileScreen() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profile) {
+      setForm(EMPTY_PROFILE);
+      return;
+    }
     setForm({
       displayName: profile.displayName,
       bio: profile.bio,
@@ -174,7 +183,7 @@ function ProfileScreen() {
               <Benefit
                 icon={<CheckCircle2 />}
                 title="Persistent session"
-                text="Stay signed in across refreshes on this device until you sign out."
+                text="Stay signed in across refreshes when browser storage is available."
               />
             </div>
           </div>
@@ -316,7 +325,7 @@ function ProfileScreen() {
             )}
             <div className="flex flex-wrap items-center gap-3 border-t border-border pt-5">
               <button
-                disabled={saving || !form.displayName.trim()}
+                disabled={saving || !profileLoaded || !form.displayName.trim()}
                 type="submit"
                 className="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >

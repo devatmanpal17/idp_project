@@ -26,11 +26,16 @@ def environment(root=ROOT):
     env = os.environ.copy()
     path = root / '.env'
     if path.exists():
-        for line in path.read_text(encoding='utf-8-sig').splitlines():
+        try:
+            lines = path.read_text(encoding='utf-8-sig').splitlines()
+        except (OSError, UnicodeError) as exc:
+            raise StartupError('Cannot read the root .env file. Check its permissions and save it as UTF-8.') from exc
+        for line in lines:
             line = line.strip()
             if line and not line.startswith('#') and '=' in line:
                 key, value = line.split('=', 1)
-                env.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+                if key.strip():
+                    env.setdefault(key.strip(), value.strip().strip('"').strip("'"))
     return env
 
 
@@ -41,7 +46,12 @@ def canonical_model(name):
 def missing_models(tags, env):
     if not isinstance(tags, dict) or not isinstance(tags.get('models'), list):
         raise StartupError('Ollama returned an invalid model list. Check OLLAMA_BASE_URL.')
-    installed = {canonical_model(item.get('name', item.get('model', ''))) for item in tags.get('models', [])}
+    installed = set()
+    for item in tags['models']:
+        name = item.get('name', item.get('model')) if isinstance(item, dict) else None
+        if not isinstance(name, str) or not name.strip():
+            raise StartupError('Ollama returned an invalid model entry. Check OLLAMA_BASE_URL.')
+        installed.add(canonical_model(name))
     requested = [env.get('OLLAMA_EMBED_MODEL', 'embeddinggemma'), env.get('OLLAMA_CHAT_MODEL', 'llama3.2:3b')]
     return [name for name in requested if canonical_model(name) not in installed]
 
@@ -109,7 +119,7 @@ def frontend_dependencies_current(frontend=ROOT/'frontend'):
             if not actual or actual.get('version') != package['version']:
                 return False
         return (frontend/'node_modules/vite/bin/vite.js').exists()
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return False
 
 
@@ -142,7 +152,6 @@ def main(argv=None):
     parser.add_argument('--no-browser', action='store_true')
     parser.add_argument('--smoke-test', action='store_true', help='Start, verify, and stop the services without opening a browser')
     options = parser.parse_args(argv)
-    env = environment()
     processes, logs = [], []
     def launch(args, name, cwd=ROOT):
         log_dir = ROOT / 'logs'
@@ -154,13 +163,14 @@ def main(argv=None):
         processes.append(process)
         return process
     try:
+        env = environment()
         if options.check:
             # Read-only check must not install packages or start a model server.
             if sys.version_info < (3, 10):
                 raise StartupError('Python 3.10+ is required.')
             node = shutil.which('node')
-            if not node or not node_supported(subprocess.check_output([node, '--version'], text=True)):
-                raise StartupError('Node.js 22.12+ is required.')
+            if not node or not shutil.which('npm') or not node_supported(subprocess.check_output([node, '--version'], text=True)):
+                raise StartupError('Node.js 22.12+ with npm is required.')
             missing = [name for name in ('fastapi', 'uvicorn', 'pydantic', 'numpy', 'chromadb', 'sqlalchemy', 'psycopg')
                        if importlib.util.find_spec(name) is None]
             if missing or not frontend_dependencies_current():
@@ -199,16 +209,16 @@ def main(argv=None):
             raise StartupError('Backend started, but AI setup is incomplete. See logs/startup-backend.log and /api/health.')
         print('Starting frontend on its fixed demo port...', flush=True)
         def frontend_ready():
-            with urllib.request.urlopen('http://127.0.0.1:8080', timeout=5) as response:
+            with urllib.request.urlopen('http://localhost:8080', timeout=5) as response:
                 return response.status == 200
         wait_ready(launch([node, str(vite), '--host', '127.0.0.1', '--port', '8080', '--strictPort'], 'Frontend', ROOT/'frontend'),
                    frontend_ready, 'Frontend')
-        print('\nChaiGaram is ready: http://127.0.0.1:8080\nAPI docs: http://127.0.0.1:8000/docs\nLogs: logs/startup-*.log\n'
+        print('\nChaiGaram is ready: http://localhost:8080\nAPI docs: http://127.0.0.1:8000/docs\nLogs: logs/startup-*.log\n'
               'Keep this window open. Press Ctrl+C to stop the services launched here.', flush=True)
         if options.smoke_test:
             return 0
         if not options.no_browser:
-            webbrowser.open('http://127.0.0.1:8080')
+            webbrowser.open('http://localhost:8080')
         while True:
             for process in processes:
                 if process.poll() is not None:

@@ -178,3 +178,14 @@ and preloads local models between its declared trial conditions.
 The executed checks can demonstrate that specific invariants hold and that
 reproduced defects are corrected. They cannot justify an unqualified “perfect”
 or “zero possible errors” statement for a patent submission.
+
+### Later browser timing correction
+
+The subsequent [demo-readiness audit](../docs/DEMO_READINESS_2026-10-02.md)
+supersedes the frame-clock choice recorded in the observation row above.
+A real 10 fps VP9 trace showed submitted-frame timestamps jumping ahead of the
+caption playback clock and leaving continuously played cues sealed. The adapter
+now witnesses `video.currentTime` on advancing rendered-frame callbacks against
+the callback clock. Duplicate frames, hidden playback, seeks, implausible jumps,
+and long callback stalls still break traversal. Full caption coverage remains
+required; no coverage threshold was relaxed to make the browser check pass.

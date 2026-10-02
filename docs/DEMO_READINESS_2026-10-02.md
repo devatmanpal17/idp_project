@@ -105,12 +105,84 @@ The additional evidence is under `post-push/` (first follow-up and refreshed
 Python/build logs), `production/` (built-site checks and contact sheets), and
 `final/browser/` (final complete development-site rerun).
 
+## Follow-up account, configuration, and playback audit
+
+The later review found account and startup paths outside the earlier live
+coverage. Delayed profile reads/saves could replace the current account's
+profile after sign-out or an account switch. Firestore requests could also keep
+the profile form busy indefinitely. Account generations now invalidate stale
+results, and the form resets per user. Auth initialization, persistence setup,
+profile reads, and writes have 15-second UI deadlines. Failed reads retain the
+Google identity but disable saving until the saved fields can be loaded; empty
+fallback values cannot overwrite an existing document. Login metadata writes
+are separate from editable fields and do not block the form. A new document is
+created on the first explicit save with all fields required by `firestore.rules`.
+
+Google sign-in uses a popup in both viewports, following Firebase's
+[popup alternative](https://firebase.google.com/docs/auth/web/redirect-best-practices#option_2_switch_to_signinwithpopup).
+Blocked durable storage falls back to
+[in-memory persistence](https://firebase.google.com/docs/auth/web/auth-state-persistence).
+Invalid SDK configuration becomes a visible setup error. Authentication no longer
+requires unused storage/messaging configuration, and initialization handles an
+existing named app without assuming a default app already exists. The launcher
+opens `localhost` consistently instead of changing browser origins on a sign-in
+click. The [setup guide](../frontend/FIREBASE_SETUP.md) covers hosted API/Firebase
+configuration; a hosted worker needs a separately reachable FastAPI backend.
+
+Malformed model registries, corrupt lockfile shapes, unreadable/non-UTF-8 root
+environment files, and a missing npm executable now give actionable startup
+results. The backend reads UTF-8/BOM environment files consistently and trims
+spaces/empty entries from its CORS origin list. Real OPTIONS requests verified
+both configured local origins, including an origin following a comma and space.
+
+The first full browser attempt was interrupted by an AuthProvider development
+reload while generating a quiz. The subsequent frozen-code run exposed a separate
+playback defect: in a 10 fps VP9 trace, frame `mediaTime` jumped from 0.7 to 1.0
+seconds while `currentTime` advanced from about 0.762 to 0.869. This broke continuous
+observation spans and left played captions sealed. The
+[frame callback specification](https://wicg.github.io/video-rvfc/) distinguishes
+the submitted frame's presentation timestamp from callback/display clocks.
+The adapter now samples caption playback time only at callbacks with an advancing
+`presentedFrames` counter, against the callback clock. Duplicate frames, seeks,
+hidden playback, rate changes, implausible jumps, and long callback stalls still
+break traversal. Full coverage remains required; no threshold was relaxed.
+
+Final verification after those fixes:
+
+- **133 Python tests**, **13 extension tests**, TypeScript, ESLint with zero
+  warnings, production build, compile checks, and zero known npm vulnerabilities.
+- **20 account checks** using the actual provider and React DOM in Chrome with
+  controlled Firebase SDK doubles. These cover out-of-order accounts, sign-out,
+  read/write/persistence/auth-initialization stalls, permission failures, first
+  document creation, saves during account changes, blocked storage, invalid
+  configuration, and unmount cleanup. They do not perform a real Google login.
+- A standalone decoded-video test covers both watched caption spans and rejects
+  the seek gap. The subsequent complete development run passed **29 workflows
+  and 25 layouts**, including actual extension playback/promotion with the skipped
+  caption still sealed. Runtime/API errors, broken images, and document overflow
+  were zero; desktop/mobile contact sheets were visually reviewed.
+- The **nine real Ollama patent checks** were repeated successfully: F1/E
+  observed-only promotion, D transfer/revision revocation, B cache reuse, A lease
+  hiding/restoration/restart, and durable quiz/answer holds. The final launcher's
+  read-only prerequisite check and cold startup/shutdown smoke test also passed.
+
+Evidence is under `auth/`, `observation/`, and `auth-followup/` in the ignored audit
+results directory. `auth-followup/browser/` records the interrupted run;
+`auth-followup/final-browser/` records the playback failure;
+`auth-followup/repaired-browser/` records the final passing run. The earlier
+provider reproduction is under `auth-before/`. Browser checks use disposable
+stores/profiles. Optional browser-test Python versions are recorded in
+`tests/browser-requirements.txt`.
+
 ## Reproduce
 
 ```powershell
 # From the repository root, with Ollama and both required models available:
 .\start_all.bat --check
 .\start_all.bat --smoke-test
+python -m pip install -r tests/browser-requirements.txt
+python scripts/check_auth_browser.py
+python scripts/check_observation_browser.py
 python scripts/check_demo_failures.py
 python scripts/check_patent_features.py --output benchmarks/results/demo-readiness-20261002/live_features.json
 $env:CHAI_LIVE_CHECK_OUTPUT = 'benchmarks/results/demo-readiness-20261002/live_models.json'

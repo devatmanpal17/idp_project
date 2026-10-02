@@ -119,7 +119,7 @@ def main():
         env = os.environ.copy()
         env.update(DATABASE_URL=f'sqlite:///{(temp / "analytics.db").as_posix()}',
                    CHROMA_PERSIST_DIR=str(temp / 'chroma'),
-                   CORS_ORIGINS='http://127.0.0.1:8081,http://localhost:8081',
+                   CORS_ORIGINS='http://127.0.0.1:8081, http://localhost:8081, ',
                    VITE_API_BASE_URL='http://127.0.0.1:8001/api')
         def launch(args, name, cwd=ROOT):
             log = (OUTPUT / (name + '.log')).open('w', encoding='utf-8')
@@ -143,6 +143,13 @@ def main():
             launch([shutil.which('node'), str(ROOT / 'frontend/node_modules/vite/bin/vite.js'),
                     '--host', '127.0.0.1', '--port', '8081', '--strictPort'], 'browser-frontend', ROOT / 'frontend')
             until(lambda: http('http://127.0.0.1:8001/api/health'))
+            for origin in ('http://127.0.0.1:8081', 'http://localhost:8081'):
+                request = urllib.request.Request('http://127.0.0.1:8001/api/rag/ask', method='OPTIONS', headers={
+                    'Origin': origin, 'Access-Control-Request-Method': 'POST',
+                    'Access-Control-Request-Headers': 'content-type'})
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    assert response.headers['Access-Control-Allow-Origin'] == origin
+            record('configured_origins_with_spaces_pass_cors_preflight')
             until(lambda: urllib.request.urlopen('http://127.0.0.1:8081', timeout=5).status == 200)
             chrome = Path(os.environ.get('PROGRAMFILES', 'C:/Program Files')) / 'Google/Chrome/Application/chrome.exe'
             profile = temp / 'browser'

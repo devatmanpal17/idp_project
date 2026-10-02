@@ -96,14 +96,48 @@ class LauncherTests(unittest.TestCase):
         with self.assertRaises(launcher.StartupError):
             launcher.missing_models({'wrong':[]}, {})
 
+    def test_malformed_model_entries_fail_with_actionable_error(self):
+        for item in (None, [], 'model', {}, {'name':None}, {'name':5}, {'name':'  '}):
+            with self.subTest(item=item), self.assertRaisesRegex(launcher.StartupError,'invalid model entry'):
+                launcher.missing_models({'models':[item]}, {})
+
+    def test_corrupt_lockfile_shapes_require_reinstall(self):
+        for document in ([], {'packages':[]}, {'packages':{'':None}}, {'packages':{'':{},'node_modules/vite':None}}):
+            with self.subTest(document=document), tempfile.TemporaryDirectory() as directory:
+                root=Path(directory)
+                self.frontend_fixture(root)
+                (root/'package-lock.json').write_text(json.dumps(document))
+                self.assertFalse(launcher.frontend_dependencies_current(root))
+
+    def test_invalid_environment_encoding_reports_without_starting_services(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'.env').write_bytes(b'INVALID=\xff\xfe')
+            reader = launcher.environment
+            with patch.object(launcher,'environment',side_effect=lambda:reader(root)), \
+                 patch('subprocess.Popen') as popen, patch('sys.stderr',io.StringIO()) as stderr:
+                self.assertEqual(launcher.main(['--check']),1)
+                self.assertIn('UTF-8',stderr.getvalue())
+                self.assertNotIn('Traceback',stderr.getvalue())
+            popen.assert_not_called()
+
+    def test_read_only_preflight_requires_npm(self):
+        with patch('shutil.which',side_effect=lambda name:'node' if name=='node' else None), \
+             patch('subprocess.check_output',return_value='v22.12.0'), \
+             patch.object(launcher,'get_json') as get, patch('sys.stderr',io.StringIO()) as stderr:
+            self.assertEqual(launcher.main(['--check']),1)
+            self.assertIn('npm',stderr.getvalue())
+        get.assert_not_called()
+
     def test_environment_file_preserves_process_overrides(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
-            (root/'.env').write_text('# Comment\nOLLAMA_CHAT_MODEL="file-model"\nDEMO_TEST_KEY=from-file\n',encoding='utf-8')
+            (root/'.env').write_text('# Comment\nOLLAMA_CHAT_MODEL="file-model"\nDEMO_TEST_KEY=from-file\n=ignored-empty-key\n',encoding='utf-8-sig')
             with patch.dict(os.environ, {'OLLAMA_CHAT_MODEL':'process-model'}):
                 env=launcher.environment(root)
             self.assertEqual(env['OLLAMA_CHAT_MODEL'],'process-model')
             self.assertEqual(env['DEMO_TEST_KEY'],'from-file')
+            self.assertNotIn('',env)
 
     def test_real_occupied_port_is_detected(self):
         with socket.socket() as server:
