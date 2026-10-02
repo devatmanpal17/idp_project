@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as CoursesRouteImport } from './routes/courses'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as MasteryRouteImport } from './routes/mastery'
+import { Route as MistakesRouteImport } from './routes/mistakes'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as QuizzesRouteImport } from './routes/quizzes'
 import { Route as RecommendationsRouteImport } from './routes/recommendations'
@@ -40,6 +41,11 @@ const HistoryRoute = HistoryRouteImport.update({
 const MasteryRoute = MasteryRouteImport.update({
   id: '/mastery',
   path: '/mastery',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MistakesRoute = MistakesRouteImport.update({
+  id: '/mistakes',
+  path: '/mistakes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProfileRoute = ProfileRouteImport.update({
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/courses': typeof CoursesRouteWithChildren
   '/history': typeof HistoryRoute
   '/mastery': typeof MasteryRoute
+  '/mistakes': typeof MistakesRoute
   '/profile': typeof ProfileRoute
   '/quizzes': typeof QuizzesRoute
   '/recommendations': typeof RecommendationsRoute
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
   '/mastery': typeof MasteryRoute
+  '/mistakes': typeof MistakesRoute
   '/profile': typeof ProfileRoute
   '/quizzes': typeof QuizzesRoute
   '/recommendations': typeof RecommendationsRoute
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/courses': typeof CoursesRouteWithChildren
   '/history': typeof HistoryRoute
   '/mastery': typeof MasteryRoute
+  '/mistakes': typeof MistakesRoute
   '/profile': typeof ProfileRoute
   '/quizzes': typeof QuizzesRoute
   '/recommendations': typeof RecommendationsRoute
@@ -132,6 +141,7 @@ export interface FileRouteTypes {
     | '/courses'
     | '/history'
     | '/mastery'
+    | '/mistakes'
     | '/profile'
     | '/quizzes'
     | '/recommendations'
@@ -145,6 +155,7 @@ export interface FileRouteTypes {
     | '/'
     | '/history'
     | '/mastery'
+    | '/mistakes'
     | '/profile'
     | '/quizzes'
     | '/recommendations'
@@ -159,6 +170,7 @@ export interface FileRouteTypes {
     | '/courses'
     | '/history'
     | '/mastery'
+    | '/mistakes'
     | '/profile'
     | '/quizzes'
     | '/recommendations'
@@ -174,6 +186,7 @@ export interface RootRouteChildren {
   CoursesRoute: typeof CoursesRouteWithChildren
   HistoryRoute: typeof HistoryRoute
   MasteryRoute: typeof MasteryRoute
+  MistakesRoute: typeof MistakesRoute
   ProfileRoute: typeof ProfileRoute
   QuizzesRoute: typeof QuizzesRoute
   RecommendationsRoute: typeof RecommendationsRoute
@@ -210,6 +223,13 @@ declare module '@tanstack/react-router' {
       path: '/mastery'
       fullPath: '/mastery'
       preLoaderRoute: typeof MasteryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mistakes': {
+      id: '/mistakes'
+      path: '/mistakes'
+      fullPath: '/mistakes'
+      preLoaderRoute: typeof MistakesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/profile': {
@@ -289,6 +309,7 @@ const rootRouteChildren: RootRouteChildren = {
   CoursesRoute: CoursesRouteWithChildren,
   HistoryRoute: HistoryRoute,
   MasteryRoute: MasteryRoute,
+  MistakesRoute: MistakesRoute,
   ProfileRoute: ProfileRoute,
   QuizzesRoute: QuizzesRoute,
   RecommendationsRoute: RecommendationsRoute,

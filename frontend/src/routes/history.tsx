@@ -56,6 +56,7 @@ function HistoryScreen() {
         `Removed ${result.removed_chunks} indexed passage${result.removed_chunks === 1 ? "" : "s"}. This source will no longer be used for quizzes.`,
       );
       await queryClient.invalidateQueries({ queryKey: ["learning-data"] });
+      await queryClient.invalidateQueries({ queryKey: ["mistakes"] });
     },
     onSettled: () => setDeletingId(null),
   });

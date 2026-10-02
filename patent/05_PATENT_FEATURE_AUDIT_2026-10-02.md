@@ -1,5 +1,9 @@
 # Patent-feature implementation audit — 2026-10-02
 
+For the subsequent concurrency, durable replay, and fault-recovery audit, see
+[deep feature interaction audit](06_DEEP_FEATURE_INTERACTION_AUDIT_2026-10-02.md).
+The results below describe the first audit and retain their original counts.
+
 This audit covers the working tree on `patent/features-a-e`, starting from
 `e9ac2adaf3f96b20a045ab09e779f8a4b25f9cca`. Work began on October 1 and continued
 on October 2, local time. It includes F1 observation-gated indexing, A evidence

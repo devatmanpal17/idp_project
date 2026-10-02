@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Check,
@@ -68,6 +69,7 @@ export function QuizGenerator({
   onDone?: (() => void) | undefined;
   onMasteryUpdated?: ((newMastery: number) => void) | undefined;
 }) {
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(true);
   const [quizData, setQuizData] = useState<RAGQuizResponse | null>(null);
   const [step, setStep] = useState(0);
@@ -167,6 +169,8 @@ export function QuizGenerator({
         current_mastery: masteryScore,
       });
       setEvaluation(res);
+      void queryClient.invalidateQueries({ queryKey: ["mistakes"] });
+      void queryClient.invalidateQueries({ queryKey: ["learning-data"] });
       setMode("results");
       onMasteryUpdated?.(res.new_mastery);
     } catch (err) {

@@ -178,6 +178,7 @@ class RAGEngine:
         self.leases.recover()
         from .answer_cache import AnswerCache
         self.answer_cache = AnswerCache(self)
+        self.scoped.transfer.recover()
 
     def invalidate_cache(self) -> None:
         if hasattr(self, 'hot_cache'):
@@ -339,9 +340,12 @@ class RAGEngine:
             key = json.dumps([self.model_version, query, topic, top_k, document_id, require_topic])
             cached = self.hot_cache.get(key)
             if cached is not None:
-                return cached
+                from .evidence_snapshot import active_chunks
+                return active_chunks(self, cached)
             started = time.perf_counter()
             result = self._retrieve(query, topic, top_k, document_id, require_topic)
+            from .evidence_snapshot import active_chunks
+            result = active_chunks(self, result)
             result_topics = {item['topic'] for item in result}
             cache_topic = topic or (next(iter(result_topics)) if len(result_topics) == 1 else None)
             self.hot_cache.put(key, result, priority=self._cache_priority(cache_topic))

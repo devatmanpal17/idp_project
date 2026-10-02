@@ -1,6 +1,6 @@
 # ChaiGaram
 
-ChaiGaram is a local AI-powered learning assistant. It captures educational webpages, course lessons, selected text, and watched video captions; indexes that material; answers questions from it; generates grounded quizzes; tracks performance; and builds a mastery dashboard and study plan.
+ChaiGaram is a local AI-powered learning assistant. It captures educational webpages, course lessons, selected text, and watched video captions; indexes that material; answers questions from it; generates grounded quizzes; tracks performance; and builds a mastery dashboard, study plan, and mistake review notebook.
 
 ## Technology stack
 
@@ -323,6 +323,25 @@ The frontend API URL can be configured in `frontend/.env.local`:
 VITE_API_BASE_URL=http://127.0.0.1:8000/api
 ```
 
+## Mistake Notebook
+
+Open **Mistakes** in the dashboard, or **Review missed questions** on the Practice
+screen. Missed quiz questions are saved automatically with their original
+assessment feedback. Older complete missed-question records are imported once.
+Recall your answer, reveal the feedback, and choose **Again** or **Remembered**.
+
+- Again schedules another review in 10 minutes and resets the spacing streak.
+- Remembered schedules reviews after 1, 3, 7, 14, then 30 days, capped at 30 days.
+- Due now and All cards include persistent progress and pagination.
+- Self-review does not change assessment mastery. It needs no additional model
+  or embedding calls; schedules are a simple practice heuristic.
+- Cards whose cited evidence is held by an open quiz hide their question and
+  feedback until the hold closes. History deletion removes cards when it removes
+  the topic's remaining sources and assessments.
+
+See [notebook and app verification](docs/MISTAKE_NOTEBOOK_VERIFICATION_2026-10-02.md)
+for the behavior, tests, and evidence limits.
+
 ## Optional Firebase login
 
 Firebase is used only for Google authentication and profile documents. Add these values to `frontend/.env.local`:
@@ -364,11 +383,16 @@ npm run build
 
 Tests cover observation gating, restart recovery, grounded quiz validation and selective repair, history deletion, recall-prioritized byte-bounded result and query-vector caches, recall forecasts, recommendations, and the HTTP routes. For a disposable live model and Chrome run, see [feature verification](patent/03_FEATURE_VERIFICATION.md) and its reproduction commands in [architecture and security](patent/02_ARCHITECTURE_AND_SECURITY.md). The [feature matrix](patent/04_PRIOR_ART_FEATURE_MATRIX.md) maps the patent comparison language to implementation and tests.
 
-The [2026-10-02 patent-feature audit](patent/05_PATENT_FEATURE_AUDIT_2026-10-02.md)
-records the follow-up defects, fixes, regression coverage, and remaining evidence
-limits. Run `python scripts/check_patent_features.py` for real local embedding,
+The [deep feature interaction audit](patent/06_DEEP_FEATURE_INTERACTION_AUDIT_2026-10-02.md)
+records concurrency, replay, fault-recovery, transfer, and residency
+fixes and verification. The [first patent-feature audit](patent/05_PATENT_FEATURE_AUDIT_2026-10-02.md)
+retains its earlier results. Run `python scripts/check_patent_features.py` for real local embedding,
 cache, transfer, lease, and restart checks on disposable caption data. Run live
 browser/model checks separately from large benchmarks to reduce resource contention.
+
+The [Mistake Notebook verification](docs/MISTAKE_NOTEBOOK_VERIFICATION_2026-10-02.md)
+records the current full app checks, including the new review workflow and its
+interaction with quiz evidence holds.
 
 ## Current limitations
 

@@ -47,7 +47,9 @@ def main():
         from ml import rag_engine as rag, llm_service
         from ml.metrics import metrics
         from ml.rag_engine import RAGEngine
-        from backend.models import AskRequest
+        from backend.models import AskRequest, GenerateQuizRequest
+        from backend.routes import jobs
+        from fastapi import HTTPException
         from backend.routes.rag import ask_lesson
 
         report.update(embedding_model=rag.model_version, chat_model=llm_service.model)
@@ -159,6 +161,35 @@ def main():
             assert active_macros > 0
             return {'active_macros': active_macros}
         check('E_full_coverage_unlocks_parent_macros', entire_video)
+
+        def durable_quiz():
+            ask_payload = AskRequest(question='What does binary search require?', source_type='video',
+                learner_key=learner, video_key=video, top_k=1).model_dump()
+            answer_job, _ = rag.jobs.create('ask', ask_payload)
+            jobs.run_job(answer_job)
+            assert jobs.job_status(answer_job)['status'] == 'succeeded'
+            quiz_payload = GenerateQuizRequest(topic='Binary search and data structures', question_count=3,
+                source_type='video', learner_key=learner, video_key=video).model_dump()
+            quiz_job, _ = rag.jobs.create('quiz', quiz_payload)
+            jobs.run_job(quiz_job)
+            delivered = jobs.job_status(quiz_job)
+            assert delivered['status'] == 'succeeded', delivered
+            quiz = delivered['result']
+            assert len(quiz['questions']) == 3
+            assert all('answer' not in question for question in quiz['questions'])
+            assert delivered['checkpoint'] == {'output_validated': True}
+            assert rag.leases.has_open(f'scoped:{learner}|{video}')
+            try:
+                jobs.job_status(answer_job)
+            except HTTPException as exc:
+                assert exc.status_code == 409
+            else:
+                raise AssertionError('Durable answer was readable under the quiz lease')
+            rag.leases.close(quiz['quiz_id'])
+            assert jobs.job_status(answer_job)['status'] == 'succeeded'
+            return {'quiz_job': quiz_job, 'question_count': len(quiz['questions']),
+                    'answer_locked_during_quiz': True, 'restored_without_regeneration': True}
+        check('A_B_durable_real_quiz_delivery_and_answer_lease_lock', durable_quiz)
 
         def revised():
             changed = [{**cue, 'text': f'Unrelated replacement botany section {i} about leaf tissue.'}

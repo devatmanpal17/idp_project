@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from fastapi.exceptions import RequestValidationError
 from backend.validation import request_validation_error
 from sqlalchemy import create_engine
-from backend.routes import rag, vectors, jobs, learning_data, settings, health, recommendations, runtime
+from backend.routes import rag, vectors, jobs, learning_data, settings, health, recommendations, runtime, mistakes
 from ml.analytics import QuizAnalyticsStore
 from ml.rag_engine import RAGEngine
 from ml.llm_service import LLMService
@@ -48,16 +48,16 @@ class APIFeaturesTests(unittest.TestCase):
             return 'Binary search repeatedly halves a sorted sequence.'
         self.llm._chat = chat
         self.stack = ExitStack()
-        for module in [rag, vectors, jobs, learning_data, health]:
+        for module in [rag, vectors, jobs, learning_data, health, mistakes]:
             self.stack.enter_context(patch.object(module, 'rag_engine', self.rag))
-        for module in [rag, learning_data, health, recommendations]:
+        for module in [rag, learning_data, health, recommendations, mistakes]:
             self.stack.enter_context(patch.object(module, 'quiz_analytics', self.analytics))
         for module in [rag, settings, health]:
             self.stack.enter_context(patch.object(module, 'llm_service', self.llm))
         self.stack.enter_context(patch.object(jobs, 'store', self.rag.jobs))
         app = FastAPI()
         app.add_exception_handler(RequestValidationError, request_validation_error)
-        for module in [rag, vectors, jobs, learning_data, settings, health, recommendations, runtime]:
+        for module in [rag, vectors, jobs, learning_data, settings, health, recommendations, runtime, mistakes]:
             app.include_router(module.router)
         self.client = TestClient(app)
 

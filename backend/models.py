@@ -107,3 +107,8 @@ class AIConfigRequest(BaseModel):
     provider: str = Field(default="ollama", description="Local Ollama provider")
     api_key: Optional[str] = Field(default="")
     model: Optional[str] = Field(default="", max_length=200)
+
+
+class ReviewMistakeRequest(RequestModel):
+    outcome: Literal['again', 'remembered']
+    version: int = Field(ge=0, strict=True)

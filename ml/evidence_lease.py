@@ -86,10 +86,10 @@ class EvidenceLease:
                                {'lease': lease_id, 'chunk': chunk_id})
                     db.execute(text("""UPDATE temporal_chunks SET state='DEMOTED'
                         WHERE id=:id AND state='ACTIVE'"""), {'id': chunk_id})
-            self.rag.collection.delete(ids=sorted(selected))
             if hasattr(self.rag, 'answer_cache'):
                 self.rag.answer_cache.remove(document_id, selected)
             self.rag.invalidate_cache()
+            self.rag.collection.delete(ids=sorted(selected))
             return lease_id
 
     def open_scoped(self, quiz_id, learner, video, questions):
@@ -163,7 +163,6 @@ class EvidenceLease:
                         state=CASE WHEN state='ACTIVE' THEN 'DEMOTED' ELSE state END,
                         demote_refcount=demote_refcount+1 WHERE chroma_id=:id"""),
                         {'id': chroma_id})
-            self.rag.collection.delete(ids=sorted(selected))
             if hasattr(self.rag, 'answer_cache'):
                 with self.engine.connect() as db:
                     scopes = db.execute(text("""SELECT chroma_id,video_key FROM scoped_chunks
@@ -175,6 +174,7 @@ class EvidenceLease:
                 for item_video, ids in by_video.items():
                     self.rag.answer_cache.remove(f'scoped:{learner}|{item_video}', ids)
             self.rag.invalidate_cache()
+            self.rag.collection.delete(ids=sorted(selected))
             return lease_id
 
     def refresh_scoped(self, learner):
@@ -225,9 +225,11 @@ class EvidenceLease:
                     rows = [dict(row) for chunk_id in restore for row in db.execute(
                         text('SELECT * FROM scoped_chunks WHERE chroma_id=:id'),
                         {'id': chunk_id}).mappings()]
+                self.rag.invalidate_cache()
                 for row in rows:
                     self.rag.scoped._upsert(row)
             else:
+                self.rag.invalidate_cache()
                 self._upsert(restore)
             if restore and hasattr(self.rag, 'answer_cache'):
                 if scope.startswith('scoped:'):
@@ -318,6 +320,7 @@ class EvidenceLease:
                 active = db.execute(text("SELECT id FROM temporal_chunks WHERE state='ACTIVE'" )).scalars().all()
             present = set(self.rag.collection.get(include=[])['ids'])
             self._upsert([chunk_id for chunk_id in active if chunk_id not in present])
+            self.rag.invalidate_cache()
 
     def would_hide(self, query, document_id, top_k, topic=None):
         """Return only a boolean; no leased text or ID enters the answer prompt."""

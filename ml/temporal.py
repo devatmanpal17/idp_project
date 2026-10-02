@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from typing import Iterable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -46,7 +45,8 @@ def watermark(intervals: list[list[int]]) -> int:
 
 
 def tokens(text: str) -> list[str]:
-    return [re.sub(r"[^\w]", "", word.casefold()) for word in text.split()]
+    # Deduplication must not erase case-sensitive identifiers or operators.
+    return text.split()
 
 
 def novel_suffix(previous: str, current: str) -> str:

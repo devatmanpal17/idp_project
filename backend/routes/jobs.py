@@ -8,6 +8,7 @@ from .rag import ask_lesson, generate_quiz, summarize_page
 from .vectors import SealRequest, seal_scoped
 from ml import rag_engine
 from ml.scheduler import controller
+from ml.publication import capture, validate_records
 
 router = APIRouter()
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="chaigaram-ai")
@@ -24,7 +25,12 @@ def run_job(job_id):
     try:
         payload = job['payload']
         if job['stage'] == 'VALIDATING' and 'result' in job['checkpoint']:
-            store.finish(job_id, result=job['checkpoint']['result'])
+            with rag_engine._lock:
+                if payload.get('source_type') == 'video' and 'evidence' not in job['checkpoint']:
+                    raise ValueError('This older video output has no evidence proof; create a fresh request.')
+                validate_records(rag_engine, job['checkpoint'].get('evidence', []),
+                                 quiz_id=job['checkpoint']['result'].get('quiz_id') if job['operation'] == 'quiz' else None)
+                store.finish(job_id, result=job['checkpoint']['result'])
             return
         if job['operation'] == 'speculate':
             started = time.perf_counter()
@@ -45,10 +51,15 @@ def run_job(job_id):
                 store.checkpoint(job_id, 'SEALED', {'last_completed_chunk': chunk_id})
             result = rag_engine.vectors.status(payload['document_id'])
         else:
-            with controller.interactive_work():
+            with controller.interactive_work(), capture() as evidence:
                 store.checkpoint(job_id, 'GENERATING', job['checkpoint'])
                 result = HANDLERS[job['operation']](MODELS[job['operation']].model_validate(payload))
-                store.checkpoint(job_id, 'VALIDATING', {'result': result})
+                with rag_engine._lock:
+                    validate_records(rag_engine, evidence,
+                                     quiz_id=result.get('quiz_id') if job['operation'] == 'quiz' else None)
+                    store.checkpoint(job_id, 'VALIDATING', {'result': result, 'evidence': evidence})
+                    store.finish(job_id, result=result)
+                return
         store.finish(job_id, result=result)
     except Exception as exc:
         store.finish(job_id, error=str(exc.detail) if isinstance(exc, HTTPException) else str(exc) or 'The AI job failed.')
@@ -79,7 +90,16 @@ def create_job(request: AIJobRequest):
 
 @router.get('/api/jobs/{job_id}')
 def job_status(job_id: str):
-    job = store.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail='Job was not found.')
-    return job
+    with rag_engine._lock:
+        private = store.get(job_id, private=True)
+        if not private:
+            raise HTTPException(status_code=404, detail='Job was not found.')
+        if 'result' in private:
+            try:
+                if private['payload'].get('source_type') == 'video' and 'evidence' not in private['checkpoint']:
+                    raise ValueError('This older video output has no evidence proof; create a fresh request.')
+                validate_records(rag_engine, private['checkpoint'].get('evidence', []),
+                                 quiz_id=private['result'].get('quiz_id') if private['operation'] == 'quiz' else None)
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return store.get(job_id)

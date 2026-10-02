@@ -146,6 +146,7 @@ class LLMService:
         self.model = os.getenv("OLLAMA_CHAT_MODEL", "llama3.2:3b")
         self.preferred_provider = "ollama"
         self._last_provider_used = "none"
+        self.configuration_version = 0
 
     @property
     def active_provider(self) -> str:
@@ -157,6 +158,7 @@ class LLMService:
         self.preferred_provider = "ollama"
         if model:
             self.model = model
+        self.configuration_version += 1
 
     def status(self) -> Dict[str, Any]:
         try:
@@ -182,15 +184,16 @@ class LLMService:
             if role in {"user", "assistant"} and content:
                 messages.append({"role": role, "content": content[:800]})
         messages.append({"role": "user", "content": user_prompt})
+        chat_model = self.model
         payload: Dict[str, Any] = {
-            "model": self.model,
+            "model": chat_model,
             "messages": messages,
             "stream": False,
             "options": {
                 "temperature": 0.1,
                 "num_predict": 2048 if schema else 500,
             },
-            "keep_alive": residency.keep_alive(self.model),
+            "keep_alive": residency.keep_alive(chat_model),
         }
         if schema:
             payload["format"] = schema
@@ -203,6 +206,7 @@ class LLMService:
         try:
             with urllib.request.urlopen(request, timeout=180) as response:
                 result = json.loads(response.read().decode("utf-8"))
+            residency.request_completed(chat_model, payload['keep_alive'])
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             raise LLMConfigurationError(f"Ollama rejected the request: {detail}") from exc

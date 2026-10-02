@@ -98,3 +98,30 @@ export type HistoryEntry = {
   word_count: number;
   progress_pct: number;
 };
+
+export type MistakeCard = {
+  id: string;
+  topic: string;
+  created_at: string;
+  due_at: string;
+  last_reviewed_at: string | null;
+  review_count: number;
+  streak: number;
+  version: number;
+  locked: boolean;
+  question?: string;
+  given_answer?: string;
+  expected_answer?: string;
+  explanation?: string;
+  bloom_level?: string;
+  citation_count?: number;
+};
+
+export type MistakeQueue = {
+  items: MistakeCard[];
+  summary: { total: number; due: number; reviewed: number };
+  total: number;
+  offset: number;
+  limit: number;
+  server_time: string;
+};

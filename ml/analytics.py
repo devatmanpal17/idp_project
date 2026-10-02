@@ -32,6 +32,8 @@ class QuizAnalyticsStore:
         self.engine: Engine = engine if engine is not None else create_engine(database_url, pool_pre_ping=True)
         self._lock = RLock()
         self._initialise()
+        from .mistakes import MistakeNotebook
+        self.mistakes = MistakeNotebook(self.engine, self._lock)
 
     @property
     def storage_backend(self) -> str:
@@ -99,9 +101,12 @@ class QuizAnalyticsStore:
         )"""
         with self._lock, self.engine.begin() as connection:
             if self.engine.dialect.name == "postgresql":
-                return int(connection.execute(text(sql + " RETURNING id"), values).scalar_one())
-            result = connection.execute(text(sql), values)
-            return int(result.lastrowid or 0)
+                attempt_id = int(connection.execute(text(sql + " RETURNING id"), values).scalar_one())
+            else:
+                result = connection.execute(text(sql), values)
+                attempt_id = int(result.lastrowid or 0)
+            self.mistakes.capture(connection, attempt_id, topic, values['completed_at'], details)
+            return attempt_id
 
     def history(self, topic: str, limit: int = 20) -> List[Dict[str, Any]]:
         with self.engine.connect() as connection:
@@ -154,6 +159,7 @@ class QuizAnalyticsStore:
         deleted_quizzes = 0
         with self._lock, self.engine.begin() as connection:
             for topic in cleaned:
+                connection.execute(text('DELETE FROM mistake_reviews WHERE topic=:topic'), {'topic': topic})
                 attempts_result = connection.execute(
                     text("DELETE FROM quiz_attempts WHERE topic = :topic"),
                     {"topic": topic},

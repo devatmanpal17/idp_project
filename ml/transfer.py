@@ -16,11 +16,11 @@ def _tokens(cues):
     for cue_index, cue in enumerate(cues):
         parts = cue['content'].split()
         for part in parts:
-            word = ''.join(char for char in part if char.isalnum())
-            if word:
+            if part:
                 # Captions provide cue timing, not word timing. Require the full
                 # source cue even when only some of its words match a clip.
-                words.append((word, cue['t_start'], cue['t_end'], cue_index))
+                # Operators, signs, underscores, and punctuation can change meaning.
+                words.append((part, cue['t_start'], cue['t_end'], cue_index))
     return words
 
 
@@ -31,12 +31,51 @@ def _shingles(words, width=5):
 
 
 class TransferEngine:
+    policy = 'exact-cue-tokens-v2'
+
     def __init__(self, store):
         self.store = store
         self.candidate_jaccard = float(os.getenv('D_CANDIDATE_JACCARD', '0.15'))
         self.min_block_words = int(os.getenv('D_MIN_BLOCK_WORDS', '12'))
         self.min_conf = float(os.getenv('D_MIN_CONF', '0.9'))
         self.stats = {'candidates': 0, 'aligned_blocks': 0, 'promoted': 0}
+        with self.store.engine.begin() as db:
+            db.execute(text('''CREATE TABLE IF NOT EXISTS scoped_transfer_policy (
+                chroma_id TEXT PRIMARY KEY, policy TEXT NOT NULL)'''))
+            db.execute(text('''CREATE TABLE IF NOT EXISTS scoped_transfer_rechecks (
+                learner_key TEXT NOT NULL, source_video_key TEXT NOT NULL,
+                PRIMARY KEY(learner_key,source_video_key))'''))
+
+    def recover(self):
+        """Recheck old-policy activations; persist the retry intent across index faults."""
+        with self.store.lock:
+            with self.store.engine.begin() as db:
+                old = db.execute(text('''SELECT c.* FROM scoped_chunks c
+                    LEFT JOIN scoped_transfer_policy p ON p.chroma_id=c.chroma_id
+                    WHERE c.provenance='transferred' AND c.embed_model=:model
+                    AND (p.policy IS NULL OR p.policy<>:policy)'''),
+                    {'model': self.store.rag.model_version, 'policy': self.policy}).mappings().all()
+                for row in old:
+                    db.execute(text('''INSERT OR IGNORE INTO scoped_transfer_rechecks
+                        VALUES (:learner,:source)'''),
+                        {'learner': row['learner_key'], 'source': row['source_video_key']})
+                    db.execute(text('''UPDATE scoped_chunks SET state='SEALED',provenance='observed',
+                        source_video_key=NULL WHERE chroma_id=:id'''), {'id': row['chroma_id']})
+                pending = db.execute(text('SELECT * FROM scoped_transfer_rechecks')).all()
+            if old:
+                self.store.rag.invalidate_cache()
+                for learner, video in {(row['learner_key'], row['video_key']) for row in old}:
+                    self.store.rag.answer_cache.bump_epoch(f'scoped:{learner}|{video}')
+            if old or pending:
+                self.store.recover()
+            for learner, source in pending:
+                for target in self._other_videos(learner, source):
+                    self.store.promote(learner, target)
+                self.on_observation(learner, source)
+                with self.store.engine.begin() as db:
+                    db.execute(text('''DELETE FROM scoped_transfer_rechecks
+                        WHERE learner_key=:learner AND source_video_key=:source'''),
+                        {'learner': learner, 'source': source})
 
     def _cues(self, learner, video):
         with self.store.engine.connect() as db:
@@ -141,6 +180,9 @@ class TransferEngine:
                              'target': target, 'id': row['chunk_id']})
                     if not changed.rowcount:
                         continue
+                    db.execute(text('''INSERT INTO scoped_transfer_policy VALUES (:id,:policy)
+                        ON CONFLICT(chroma_id) DO UPDATE SET policy=excluded.policy'''),
+                        {'id': row['chroma_id'], 'policy': self.policy})
                     db.execute(text("""UPDATE scoped_videos SET promotion_seq=promotion_seq+1
                         WHERE learner_key=:learner AND video_key=:target"""),
                         {'learner': learner, 'target': target})
