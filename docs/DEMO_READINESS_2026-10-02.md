@@ -174,6 +174,16 @@ provider reproduction is under `auth-before/`. Browser checks use disposable
 stores/profiles. Optional browser-test Python versions are recorded in
 `tests/browser-requirements.txt`.
 
+The fixes were pushed as `8cc464e105343a46cf668deafb636bc1bc2d2e7f`; the remote
+branch hash was verified. The production-worker check after pushing passed all
+**six workflows and 24 layouts** against the final built app: Windows preview
+startup, real quiz/scoring/graphs, persistent notebook review, all 12 routes in
+both viewports, and the 404 screen. Runtime/API failures, broken images, and
+document overflow were zero. Both production contact sheets were visually
+reviewed. Evidence is in `auth-followup/production/`, with the tested source hash
+in `auth-followup/tested-commit.txt`. Hosted deployment and real Google sign-in
+remain outside this local test run.
+
 ## Reproduce
 
 ```powershell
