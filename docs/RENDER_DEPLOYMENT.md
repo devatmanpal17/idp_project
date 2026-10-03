@@ -8,6 +8,10 @@ The free 512 MB service cannot run this model stack or attach persistent storage
 It hosts the React server-rendered dashboard, FastAPI, Chroma, SQLite, and CPU
 Ollama (`embeddinggemma` and `llama3.2:3b`). The browser extension still installs
 in Chrome/Edge; websites cannot automatically install extensions.
+The final image includes the CPU inference runner and its libraries, with the
+upstream executable/library layout preserved. GPU payloads are excluded to keep
+the image and build disk smaller. The Linux acceptance check tests actual
+inference; an online Ollama daemon or downloaded model list alone is insufficient.
 
 ## Deploy
 

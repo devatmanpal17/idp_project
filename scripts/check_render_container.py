@@ -94,6 +94,9 @@ def main():
         ready()
 
     try:
+        size = int(docker('image', 'inspect', '-f', '{{.Size}}', args.image))
+        assert size < 4 * 1024**3, 'CPU deployment image must stay small enough for the Render build disk'
+        print(f'CPU image size: {size/1024**3:.2f} GiB', flush=True)
         docker('volume', 'create', volume)
         start('-e', 'CHAI_MODEL_AUTO_PULL=false')
         assert json.loads(request('/healthz')[2]) == {'status': 'ok'}
@@ -217,11 +220,12 @@ def main():
     except Exception as exc:
         logs = subprocess.run(['docker', 'logs', name], text=True, capture_output=True)
         # Use a disposable password but redact defensively if an upstream tool logs it.
-        print((logs.stdout+logs.stderr).replace(password, '[redacted]'))
+        safe_logs = (logs.stdout+logs.stderr).replace(password, '[redacted]')
+        print(safe_logs)
         detail = traceback.format_exc()
         if isinstance(exc, subprocess.CalledProcessError):
             detail += '\n' + (exc.stdout or '') + '\n' + (exc.stderr or '')
-        detail = detail.replace(password, '[redacted]')
+        detail = detail.replace(password, '[redacted]') + '\nContainer log tail:\n' + safe_logs[-10000:]
         print(detail, flush=True)
         if os.getenv('GITHUB_ACTIONS') == 'true':
             # Make the concrete failure available in the public check annotation,
