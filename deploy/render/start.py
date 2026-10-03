@@ -170,11 +170,13 @@ def main() -> int:
         signal.signal(sig, lambda *_: services.stop.set())
     try:
         services.launch('Ollama', ['ollama', 'serve'])
+        # Restarted SQL jobs can resume during API lifespan startup. Make their
+        # inference transport available before that startup begins.
+        services.ready('http://127.0.0.1:11434/api/tags')
         services.launch('API', [sys.executable, '-m', 'uvicorn', 'backend.app:app',
                                '--host', '127.0.0.1', '--port', '8000', '--workers', '1',
                                '--timeout-graceful-shutdown', '80'])
         services.launch('Dashboard', ['node', 'frontend/dist-render/server/index.mjs'])
-        services.ready('http://127.0.0.1:11434/api/tags')
         services.ready('http://127.0.0.1:8000/api/live')
         services.ready('http://127.0.0.1:3000/')
         services.launch('Gateway', ['nginx', '-c', str(config), '-g', 'daemon off;'])
