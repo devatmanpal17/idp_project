@@ -89,6 +89,7 @@ given the demo password can capture, read, quiz, change settings, and delete tha
 data. Public multi-user hosting first requires authenticated API users and data
 isolation. Startup refuses a missing/invalid password. Ollama, Node and FastAPI
 listen only on loopback behind the public gateway.
+Protected pages, API responses, and downloads disable shared caching.
 
 Disk services cannot scale to multiple instances and have a short redeploy outage.
 CPU generation can be slower than a local GPU; increase resources if your workload

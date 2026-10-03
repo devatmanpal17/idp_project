@@ -18,6 +18,8 @@ http {
         auth_basic_user_file /tmp/chaigaram.htpasswd;
         add_header X-Content-Type-Options nosniff always;
         add_header Referrer-Policy strict-origin-when-cross-origin always;
+        proxy_hide_header Cache-Control;
+        add_header Cache-Control "private, no-store" always;
 
         # No private data or model diagnostics in the public platform probe.
         location = /healthz {
@@ -39,6 +41,7 @@ http {
         location = /downloads/chaigaram-extension.zip {
             alias /app/chaigaram-extension.zip;
             add_header Content-Disposition 'attachment; filename="chaigaram-extension.zip"';
+            add_header Cache-Control "private, no-store" always;
         }
         location / {
             proxy_pass http://127.0.0.1:3000;

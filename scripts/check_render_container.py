@@ -81,6 +81,7 @@ def main():
             assert not any('.env' in item for item in bundle.namelist())
         code, headers, html = request('/', True)
         assert code == 200 and 'text/html' in headers['Content-Type'] and 'ChaiGaram' in html
+        assert 'no-store' in headers['Cache-Control']
         assets = re.findall(r'(?:src|href)="([^" ]+\.(?:js|css))"', html)
         assert assets, 'SSR must include client assets'
         for asset in assets:
@@ -95,7 +96,8 @@ def main():
         health = json.loads(request('/api/health', True)[2])
         assert health['status'] == 'setup_required'
         assert health['analytics_database'] == 'sqlite'
-        assert request('/api/learning/data', True)[0] == 200
+        code, headers, _ = request('/api/learning/data', True)
+        assert code == 200 and 'no-store' in headers['Cache-Control']
         assert request('/api/rag/ingest', True, 'POST', {})[0] == 422
         assert request('/api/tags', True)[0] == 404, 'Ollama endpoints must remain private'
         assert len(docker('port', name).splitlines()) == 1
