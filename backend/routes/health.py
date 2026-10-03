@@ -10,6 +10,12 @@ from ml.analytics import quiz_analytics
 router = APIRouter()
 
 
+@router.get("/api/live")
+async def liveness():
+    # Platform probes must stay fast while models download or perform inference.
+    return {"status": "ok"}
+
+
 @router.get("/api/health")
 def health_check():
     rag_status = rag_engine.status()

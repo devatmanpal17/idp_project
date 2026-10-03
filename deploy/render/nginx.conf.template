@@ -1,0 +1,52 @@
+user www-data;
+worker_processes 1;
+pid /tmp/chaigaram-nginx.pid;
+error_log /dev/stderr warn;
+events { worker_connections 1024; }
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    access_log off;
+    server_tokens off;
+    client_body_temp_path /tmp/chaigaram-client;
+    proxy_temp_path /tmp/chaigaram-proxy;
+    server {
+        listen __PORT__;
+        server_name _;
+        client_max_body_size 2m;
+        auth_basic "ChaiGaram private demo";
+        auth_basic_user_file /tmp/chaigaram.htpasswd;
+        add_header X-Content-Type-Options nosniff always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+        # No private data or model diagnostics in the public platform probe.
+        location = /healthz {
+            auth_basic off;
+            proxy_pass http://127.0.0.1:8000/api/live;
+            proxy_read_timeout 3s;
+        }
+        location /api/ {
+            proxy_pass http://127.0.0.1:8000;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header Authorization "";
+            proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_read_timeout 600s;
+            proxy_send_timeout 600s;
+            proxy_buffering off;
+        }
+        location = /downloads/chaigaram-extension.zip {
+            alias /app/chaigaram-extension.zip;
+            add_header Content-Disposition 'attachment; filename="chaigaram-extension.zip"';
+        }
+        location / {
+            proxy_pass http://127.0.0.1:3000;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header Authorization "";
+            proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+            proxy_read_timeout 60s;
+        }
+    }
+}

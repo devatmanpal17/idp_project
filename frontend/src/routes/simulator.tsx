@@ -28,6 +28,7 @@ export const Route = createFileRoute("/simulator")({
 });
 
 function ExtensionScreen() {
+  const hosted = import.meta.env["VITE_DEPLOY_TARGET"] === "render";
   const [health, setHealth] = useState<AIHealth | null>(null);
   const [topics, setTopics] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +46,7 @@ function ExtensionScreen() {
       setError(
         reason instanceof Error
           ? reason.message
-          : "Unable to reach the local AI backend.",
+          : "Unable to reach the AI backend.",
       );
     }
   }
@@ -95,7 +96,7 @@ function ExtensionScreen() {
         />
         <StatusCard
           icon={<ShieldCheck />}
-          label="Local model"
+          label={hosted ? "AI model" : "Local model"}
           value={String(health?.active_ai_provider ?? "unavailable")}
           ready={Boolean(health?.llm_service?.model_ready)}
         />
@@ -107,6 +108,17 @@ function ExtensionScreen() {
           subtitle="Load the unpacked Manifest V3 extension directly from this project."
         />
         <ol className="list-decimal space-y-3 p-6 pl-10 text-sm text-muted-foreground">
+          {hosted && (
+            <li>
+              <a
+                className="text-primary underline"
+                href="/downloads/chaigaram-extension.zip"
+              >
+                Download the extension
+              </a>{" "}
+              and extract the ZIP on your computer.
+            </li>
+          )}
           <li>
             Open <code className="text-foreground">chrome://extensions</code> or{" "}
             <code className="text-foreground">edge://extensions</code>.
@@ -116,8 +128,22 @@ function ExtensionScreen() {
             <strong className="text-foreground">Load unpacked</strong>.
           </li>
           <li>
-            Select <code className="text-foreground">chaigaram/extension</code>.
+            Select{" "}
+            <code className="text-foreground">
+              {hosted
+                ? "the extracted extension folder"
+                : "chaigaram/extension"}
+            </code>
+            .
           </li>
+          {hosted && (
+            <li>
+              In extension Connection settings, set both URLs to this
+              dashboard's HTTPS address, without a trailing path. Enter the
+              hosted demo password and select{" "}
+              <strong>Save and test connection</strong>.
+            </li>
+          )}
           <li>
             Open any HTTP or HTTPS lesson page, then click the ChaiGaram toolbar
             icon.

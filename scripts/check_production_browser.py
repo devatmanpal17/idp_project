@@ -27,15 +27,18 @@ def main():
     processes, logs = [], []
     cdp = None
     images = dict(desktop=[], mobile=[])
+    render = os.getenv('CHAI_PRODUCTION_TARGET') == 'render'
+    headers = {}
+    report['target'] = 'render' if render else 'cloudflare'
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
         temp = Path(directory)
         env = os.environ.copy()
         env.update(DATABASE_URL=f'sqlite:///{(temp/"analytics.db").as_posix()}',
                    CHROMA_PERSIST_DIR=str(temp/'chroma'), WRANGLER_SEND_METRICS='false')
-        def launch(args, name, cwd=ROOT):
+        def launch(args, name, cwd=ROOT, extra_env=None):
             log = (OUTPUT/f'{name}.log').open('w',encoding='utf-8')
             logs.append(log)
-            process = subprocess.Popen(args,cwd=cwd,env=env,stdout=log,stderr=log,
+            process = subprocess.Popen(args,cwd=cwd,env={**env, **(extra_env or {})},stdout=log,stderr=log,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
             processes.append(process)
             return process
@@ -49,23 +52,38 @@ def main():
         def loaded(session):
             return cdp.evaluate("Boolean(document.querySelector('main h1')) && !document.body.innerText.includes(\"This page didn't load\") && !document.body.innerText.includes('Loading your learning space')",session)
         try:
-            for port in (8000,8080):
+            for port in ((8000,8080,3000) if render else (8000,8080)):
                 if not port_available(port):
                     raise RuntimeError(f'Production check requires free port {port}; no existing service will be stopped.')
-            if not (ROOT/'frontend/dist/server/wrangler.json').exists():
+            if not render and not (ROOT/'frontend/dist/server/wrangler.json').exists():
                 raise RuntimeError('Run npm run build from frontend first.')
+            if render and not (ROOT/'frontend/dist-render/server/index.mjs').exists():
+                raise RuntimeError('Run npm run build:render from frontend first.')
             launch([sys.executable,'-m','uvicorn','backend.app:app','--port','8000'], 'backend')
             until(lambda:http('http://127.0.0.1:8000/api/health').get('status')=='ready')
             node=Path(shutil.which('node'))
             npm_cli=node.parent/'node_modules/npm/bin/npm-cli.js' if os.name=='nt' else Path(shutil.which('npm')).resolve()
-            preview=launch([str(node),str(npm_cli),'run','preview'],'preview',ROOT/'frontend')
+            if render:
+                from render_preview import launch_preview
+                preview, headers = launch_preview(launch, temp)
+            else:
+                preview=launch([str(node),str(npm_cli),'run','preview'],'preview',ROOT/'frontend')
             def ready():
                 if preview.poll() is not None:
                     raise RuntimeError('Production preview exited. See preview.log.')
-                with urllib.request.urlopen('http://127.0.0.1:8080',timeout=5) as response:
+                with urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8080',headers=headers),timeout=5) as response:
                     return response.status==200
             until(ready,120)
             record('production_preview_starts_on_windows')
+            if render:
+                for path in ('/', '/api/health', '/api/learning/data'):
+                    try:
+                        urllib.request.urlopen('http://127.0.0.1:8080'+path, timeout=5)
+                        raise AssertionError('Unauthenticated request was allowed.')
+                    except urllib.error.HTTPError as error:
+                        assert error.code == 401
+                assert http('http://127.0.0.1:8080/healthz') == {'status':'ok'}
+                record('render_gateway_password_boundary_and_public_liveness')
             http('http://127.0.0.1:8000/api/rag/ingest',dict(title='Production fixture',topic='Binary search',content=LESSON))
             profile=temp/'chrome'
             chrome=Path(os.environ.get('PROGRAMFILES','C:/Program Files'))/'Google/Chrome/Application/chrome.exe'
@@ -74,6 +92,9 @@ def main():
             port=until(lambda:(profile/'DevToolsActivePort').read_text().splitlines()[0])
             cdp=CDP(http(f'http://127.0.0.1:{port}/json/version')['webSocketDebuggerUrl'])
             session=cdp.page('http://127.0.0.1:8080/quizzes')
+            if render:
+                cdp.call('Network.setExtraHTTPHeaders', {'headers':headers}, session)
+                cdp.call('Page.reload', {}, session)
             until(lambda:loaded(session))
             until(lambda:click('Generate New AI Practice Quiz',session))
             until(lambda:cdp.evaluate("[...document.querySelectorAll('button')].filter(b=>/^A\\./.test(b.innerText.trim())).length===3",session),300)
@@ -99,7 +120,7 @@ def main():
             for viewport,width,height in [('desktop',1440,1000),('mobile',390,844)]:
                 cdp.call('Emulation.setDeviceMetricsOverride',dict(width=width,height=height,deviceScaleFactor=1,mobile=viewport=='mobile'),session)
                 for route in routes:
-                    with urllib.request.urlopen('http://127.0.0.1:8080'+route,timeout=15) as response:
+                    with urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8080'+route,headers=headers),timeout=15) as response:
                         assert response.status==200
                     cdp.call('Page.navigate',{'url':'http://127.0.0.1:8080'+route},session)
                     until(lambda:loaded(session))

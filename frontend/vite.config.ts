@@ -4,6 +4,9 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import { nitro } from "nitro/vite";
 
+// Render is opt-in. Keep local development and Wrangler preview unchanged.
+const renderBuild = process.env["CHAI_DEPLOY_TARGET"] === "render";
+
 export default defineConfig({
   plugins: [
     tailwindcss(),
@@ -11,13 +14,13 @@ export default defineConfig({
       server: { entry: "server" },
     }),
     nitro({
-      preset: "cloudflare-module",
+      preset: renderBuild ? "node-server" : "cloudflare-module",
       // Local Vite runs in Node; preview checks the built worker with Wrangler.
       devServer: { runner: "node-worker" },
       output: {
-        dir: "dist",
-        serverDir: "dist/server",
-        publicDir: "dist/client",
+        dir: renderBuild ? "dist-render" : "dist",
+        serverDir: renderBuild ? "dist-render/server" : "dist/server",
+        publicDir: renderBuild ? "dist-render/public" : "dist/client",
       },
     }),
     react(),

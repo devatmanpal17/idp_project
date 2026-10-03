@@ -1,5 +1,9 @@
 # ChaiGaram Learning Companion extension
 
+For Render, set both connection URLs to the HTTPS service origin (without `/api`)
+and enter the optional hosted demo password. Localhost defaults need no password.
+See [Render deployment](../docs/RENDER_DEPLOYMENT.md).
+
 This is an installable Chrome/Edge Manifest V3 extension for the ChaiGaram backend. It works on any normal HTTP or HTTPS page: articles, documentation, LMS lessons, course platforms, blogs, and video sites. It can capture visible captions, selected text, or the useful reading content of a page, then answer grounded questions and generate adaptive quizzes.
 
 The popup includes **Open my dashboard**. Its URL can be changed in Connection settings, along with the backend URL, so the same build works with local development or a deployed website/API.

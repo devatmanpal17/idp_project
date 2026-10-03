@@ -255,10 +255,13 @@ export function PersonalChatbot() {
 
       const controller = new AbortController();
       activeRequestRef.current = controller;
-      const timeout = window.setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-      }, 60_000);
+      const timeout = window.setTimeout(
+        () => {
+          timedOut = true;
+          controller.abort();
+        },
+        import.meta.env["VITE_DEPLOY_TARGET"] === "render" ? 300_000 : 60_000,
+      );
       let result: Awaited<ReturnType<typeof askRAGAssistant>>;
       try {
         result = await askRAGAssistant({

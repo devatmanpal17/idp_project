@@ -7,6 +7,7 @@
     "dev": "vite dev",
     "dev:backend": "python -m uvicorn backend.app:app --port 8000 --reload",
     "build": "vite build",
+    "build:render": "node scripts/build-render.mjs",
     "build:dev": "vite build --mode development",
     "preview": "wrangler dev --config dist/server/wrangler.json --ip 127.0.0.1 --port 8080 --local",
     "lint": "eslint .",

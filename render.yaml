@@ -1,0 +1,36 @@
+# Paid CPU hosting for the full local-model demo; review pricing before creating.
+# yaml-language-server: $schema=https://render.com/schema/render.yaml.json
+services:
+  - type: web
+    name: chaigaram
+    runtime: docker
+    region: singapore
+    plan: 4c-8g
+    branch: patent/features-a-e
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    numInstances: 1
+    autoDeployTrigger: "off"
+    healthCheckPath: /healthz
+    maxShutdownDelaySeconds: 120
+    disk:
+      name: chaigaram-data
+      mountPath: /var/data
+      sizeGB: 20
+    envVars:
+      - key: CHAI_HOST_PASSWORD
+        sync: false
+      - key: OLLAMA_EMBED_MODEL
+        value: embeddinggemma
+      - key: OLLAMA_CHAT_MODEL
+        value: llama3.2:3b
+      - key: C_RAM_BUDGET_MB
+        value: "6144"
+      - key: VITE_FIREBASE_API_KEY
+        sync: false
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: VITE_FIREBASE_PROJECT_ID
+        sync: false
+      - key: VITE_FIREBASE_APP_ID
+        sync: false

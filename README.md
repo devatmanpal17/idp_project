@@ -47,6 +47,10 @@ React dashboard (:8080)
 
 The extension and React dashboard are separate clients of the same FastAPI backend.
 
+For full-stack Render hosting, follow [Render deployment](docs/RENDER_DEPLOYMENT.md).
+The Docker/Blueprint setup is opt-in and preserves `start_all.bat`, local data,
+and the existing development and preview commands.
+
 ## Repository structure
 
 ```text

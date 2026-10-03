@@ -14,13 +14,16 @@ chrome.runtime.onInstalled.addListener(async () => {
 async function apiRequest(path, init = {}) {
   const { apiBaseUrl } = await chrome.storage.sync.get(DEFAULT_SETTINGS);
   const base = ChaiConnection.connectionURL(apiBaseUrl || DEFAULT_SETTINGS.apiBaseUrl);
+  const { hostPassword } = await chrome.storage.local.get('hostPassword');
+  const authHeaders = ChaiConnection.hostPasswordHeaders(base, hostPassword);
   const response = await fetch(`${base}${path}`, {
     ...init,
     signal: AbortSignal.timeout(180000),
-    headers: { "Content-Type": "application/json", ...(init.headers || {}) },
+    headers: { "Content-Type": "application/json", ...(init.headers || {}), ...authHeaders },
   });
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
+    if (response.status === 401) detail = 'Check the hosted demo password in extension settings.';
     try {
       const body = await response.json();
       detail = body.detail || detail;

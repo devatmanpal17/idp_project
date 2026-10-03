@@ -1,0 +1,46 @@
+name: Render container
+"on":
+  push:
+    branches: [patent/features-a-e, main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - render.yaml
+      - deploy/**
+      - backend/**
+      - ml/**
+      - frontend/**
+      - extension/**
+      - tests/**
+      - scripts/check_render_container.py
+      - .github/workflows/render.yml
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Extension tests
+        run: node --test tests/*.test.cjs
+      - name: Deployment configuration tests
+        run: python -m unittest discover -s tests -p test_render_deployment.py
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: chaigaram-render:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Gateway, API, SSR, storage and shutdown smoke checks
+        run: python scripts/check_render_container.py --image chaigaram-render:test
