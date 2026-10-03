@@ -34,7 +34,8 @@ def runtime_environment(source: dict[str, str]) -> dict[str, str]:
     # These paths are deployment-only; local .env and data directories are untouched.
     env.update(OLLAMA_HOST='127.0.0.1:11434', OLLAMA_BASE_URL='http://127.0.0.1:11434',
                OLLAMA_MODELS=str(data/'ollama'), CHROMA_PERSIST_DIR=str(data/'chroma'),
-               NITRO_HOST='127.0.0.1', NITRO_PORT='3000', NODE_ENV='production')
+               NITRO_HOST='127.0.0.1', NITRO_PORT='3000', NODE_ENV='production',
+               CHAI_REQUIRE_RESOLVED_EMBEDDING_MODEL='true')
     defaults = dict(DATABASE_URL=f'sqlite:///{data}/analytics.sqlite3',
                     OLLAMA_EMBED_MODEL='embeddinggemma', OLLAMA_CHAT_MODEL='llama3.2:3b',
                     OLLAMA_NUM_PARALLEL='1', OLLAMA_MAX_LOADED_MODELS='2',

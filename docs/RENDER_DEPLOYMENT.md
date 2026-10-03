@@ -98,6 +98,9 @@ SQLite `DATABASE_URL` must stay inside `/var/data`; temporary or in-memory paths
 are rejected. Remove any localhost `CHROMA_HOST` setting: this Blueprint uses
 Chroma on its mounted disk. `CHAI_MODEL_AUTO_PULL=false` disables downloads and
 keeps the setup API active until both models are installed manually.
+If the model inventory fails between setup and backend initialization, the API
+refuses recovery rather than invalidating existing patent records under an
+unresolved embedding identity; the container can restart safely.
 
 Disk services cannot scale to multiple instances and have a short redeploy outage.
 CPU generation can be slower than a local GPU; increase resources if your workload

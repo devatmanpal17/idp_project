@@ -141,6 +141,11 @@ class RAGEngine:
             except (urllib.error.URLError, OSError, ValueError):
                 # Explicitly version unavailable service configurations. Never mix with a digest collection.
                 self.model_version += ':unresolved'
+            if (self.model_version.endswith(':unresolved')
+                    and os.getenv('CHAI_REQUIRE_RESOLVED_EMBEDDING_MODEL', '').lower() == 'true'):
+                # Hosted recovery must never invalidate saved vectors because of a
+                # transient inventory outage between provisioning and API startup.
+                raise RAGConfigurationError('Embedding model identity is unavailable; retry startup after model setup.')
         suffix = hashlib.sha256(self.model_version.encode()).hexdigest()[:16]
         chroma_host = os.getenv("CHROMA_HOST", "").strip()
         if chroma_host:

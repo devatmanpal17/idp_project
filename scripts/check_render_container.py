@@ -13,6 +13,7 @@ import secrets
 import socket
 import subprocess
 import time
+import traceback
 import urllib.error
 import urllib.request
 from io import BytesIO
@@ -183,8 +184,8 @@ def main():
                   "assert Path('/var/data/chroma/check.txt').read_text()=='persist'; "
                   "assert Path('/var/data/ollama/check.txt').read_text()=='persist'")
         docker('exec', name, 'python', '-c', script)
-        assert request('/api/learning/data', True)[0] == 200
         ai_ready()
+        assert request('/api/learning/data', True)[0] == 200
         assert json.loads(request('/api/health', True)[2])['collection'] == health['collection']
         assert retrieved() == chunk_ids, 'Restart must preserve vector identities and content'
         diagnostics = json.loads(request('/api/vectors/diagnostics', True)[2])
@@ -213,10 +214,20 @@ def main():
         docker('stop', '-t', '110', name)
         assert docker('inspect', '-f', '{{.State.ExitCode}}', name) == '0'
         print('PASS: password boundary, SSR, first boot, real CPU models/patent checks, persistence, failure recovery and graceful shutdown.')
-    except Exception:
+    except Exception as exc:
         logs = subprocess.run(['docker', 'logs', name], text=True, capture_output=True)
         # Use a disposable password but redact defensively if an upstream tool logs it.
         print((logs.stdout+logs.stderr).replace(password, '[redacted]'))
+        detail = traceback.format_exc()
+        if isinstance(exc, subprocess.CalledProcessError):
+            detail += '\n' + (exc.stdout or '') + '\n' + (exc.stderr or '')
+        detail = detail.replace(password, '[redacted]')
+        print(detail, flush=True)
+        if os.getenv('GITHUB_ACTIONS') == 'true':
+            # Make the concrete failure available in the public check annotation,
+            # including stderr from acceptance drivers run with docker exec.
+            escaped = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+            print('::error::' + escaped, flush=True)
         raise
     finally:
         subprocess.run(['docker', 'rm', '-f', name], capture_output=True)

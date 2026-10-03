@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 from sqlalchemy import create_engine, text
-from ml.rag_engine import RAGEngine
+from ml.rag_engine import RAGEngine, RAGConfigurationError
 from ml.scoped_store import unblob
 from ml.answer_cache import cosine
 from backend.models import AskRequest
@@ -52,6 +52,20 @@ class ScopedStoreTests(unittest.TestCase):
                     {'name': name, 'digest': 'wanted'}]}).encode()
                 restarted = RAGEngine(Path(self.tmp.name) / 'chroma', state_engine=self.db)
                 self.assertEqual(restarted.model_version, expected)
+
+    def test_hosted_inventory_outage_cannot_recover_or_invalidate_persisted_vectors(self):
+        # Existing temporal records are especially sensitive: recovery deletes
+        # revisions whose embedding identity differs from the startup identity.
+        from ml.temporal import Caption
+        document = self.rag.vectors.register('https://demo.test/persist', 'Saved lesson',
+            [Caption(start_ms=0, end_ms=1000, text='The saved evidence must survive a temporary outage.')])
+        with patch.dict(os.environ, {'CHAI_REQUIRE_RESOLVED_EMBEDDING_MODEL': 'true'}), \
+             patch('ml.rag_engine.urllib.request.urlopen', side_effect=OSError('temporary inventory outage')), \
+             patch('ml.rag_engine.chromadb.PersistentClient') as chroma:
+            with self.assertRaisesRegex(RAGConfigurationError, 'identity is unavailable'):
+                RAGEngine(Path(self.tmp.name) / 'chroma', state_engine=self.db)
+        chroma.assert_not_called()
+        self.assertEqual(self.rag.vectors.document(document['document_id'])['state'], 'CURRENT')
 
     def test_seal_observe_micro_then_macro_and_reconcile(self):
         first = self.rag.scoped.seal(self.learner, self.video, self.cues, 12)
