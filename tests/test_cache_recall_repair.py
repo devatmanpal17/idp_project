@@ -64,6 +64,22 @@ class RecallTests(unittest.TestCase):
 
 
 class SelectiveRepairTests(unittest.TestCase):
+    def test_generation_grammar_resolves_answer_labels_and_only_allows_active_citations(self):
+        question = copy.deepcopy(VALID['questions'][0])
+        question.update(answer='A', citations=['C1'])
+        calls = []
+        service = LLMService()
+        def chat(_system, prompt, **kwargs):
+            calls.append((prompt, kwargs['schema']))
+            return json.dumps({'questions': [question]})
+        service._chat = chat
+        result = service.generate_quiz_with_rag('Search', CHUNKS, 50, .5, 1)
+        self.assertEqual(result[0]['answer'], question['choices'][0])
+        self.assertEqual(result[0]['citations'], ['E1'])
+        properties = calls[0][1]['$defs']['QuizQuestion']['properties']
+        self.assertEqual(properties['answer']['enum'], ['A', 'B', 'C', 'D'])
+        self.assertEqual(properties['citations']['items']['enum'], ['C1'])
+
     def test_macro_quote_catalog_keeps_facts_from_the_end_of_the_evidence(self):
         sentences = [f'Lesson introduction number {index} describes a separate source fact.' for index in range(9)]
         sentences.append('A queue processes elements in their arrival order.')
