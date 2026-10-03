@@ -50,6 +50,8 @@ The extension and React dashboard are separate clients of the same FastAPI backe
 For full-stack Render hosting, follow [Render deployment](docs/RENDER_DEPLOYMENT.md).
 The Docker/Blueprint setup is opt-in and preserves `start_all.bat`, local data,
 and the existing development and preview commands.
+The [Render and localhost verification](docs/RENDER_READINESS_2026-10-03.md) records
+the Linux container, browser, and regression checks.
 
 ## Repository structure
 
@@ -436,7 +438,7 @@ interaction with quiz evidence holds.
 
 ## Current limitations
 
-- FastAPI endpoints do not currently require authentication.
+- FastAPI itself has no user authentication. The Render configuration keeps it private behind a password-protected gateway; direct backend access should remain local or trusted.
 - Learning data is global to one backend instance and is not separated by Firebase user ID.
 - CORS defaults to local dashboard origins and Chrome extension origins. Configure `CORS_ORIGINS` for a different dashboard; CORS does not provide authentication.
 - Background AI jobs persist in SQL and resume after restart. Run one backend process: cross-process worker leases are not implemented. Interrupted model calls may repeat if their output was not yet checkpointed.
