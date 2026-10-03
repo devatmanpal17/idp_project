@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import signal
 import subprocess
 import sys
@@ -17,8 +17,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def public_port(value: str) -> int:
     port = int(value)
-    if not 1024 <= port <= 65535 or port in (3000, 8000, 11434):
-        raise ValueError('PORT must be 1024..65535 and distinct from internal ports.')
+    if not 1024 <= port <= 65535 or port in (3000, 8000, 11434, 18012, 18013, 19099):
+        raise ValueError('PORT must be 1024..65535, excluding internal and Render-reserved ports.')
     return port
 
 
@@ -30,18 +30,31 @@ def validate_password(password: str) -> None:
 
 def runtime_environment(source: dict[str, str]) -> dict[str, str]:
     env = {key: value for key, value in source.items() if key != 'CHAI_HOST_PASSWORD'}
-    data = Path('/var/data')
+    data = PurePosixPath('/var/data')
     # These paths are deployment-only; local .env and data directories are untouched.
     env.update(OLLAMA_HOST='127.0.0.1:11434', OLLAMA_BASE_URL='http://127.0.0.1:11434',
                OLLAMA_MODELS=str(data/'ollama'), CHROMA_PERSIST_DIR=str(data/'chroma'),
                NITRO_HOST='127.0.0.1', NITRO_PORT='3000', NODE_ENV='production')
-    env.setdefault('DATABASE_URL', f'sqlite:///{data}/analytics.sqlite3')
-    env.setdefault('OLLAMA_EMBED_MODEL', 'embeddinggemma')
-    env.setdefault('OLLAMA_CHAT_MODEL', 'llama3.2:3b')
-    env.setdefault('OLLAMA_NUM_PARALLEL', '1')
-    env.setdefault('OLLAMA_MAX_LOADED_MODELS', '2')
-    env.setdefault('OLLAMA_CONTEXT_LENGTH', '4096')
-    env.setdefault('C_RAM_BUDGET_MB', '6144')
+    defaults = dict(DATABASE_URL=f'sqlite:///{data}/analytics.sqlite3',
+                    OLLAMA_EMBED_MODEL='embeddinggemma', OLLAMA_CHAT_MODEL='llama3.2:3b',
+                    OLLAMA_NUM_PARALLEL='1', OLLAMA_MAX_LOADED_MODELS='2',
+                    OLLAMA_CONTEXT_LENGTH='4096', C_RAM_BUDGET_MB='6144',
+                    CHAI_MODEL_AUTO_PULL='true')
+    for key, default in defaults.items():
+        env[key] = env.get(key, '').strip() or default
+    if env['DATABASE_URL'].startswith('sqlite'):
+        # A copied localhost URL or in-memory database would lose data on redeploy.
+        path = env['DATABASE_URL'].partition(':///')[2].split('?', 1)[0]
+        target = PurePosixPath(path)
+        if not path or not target.is_absolute() or not target.is_relative_to(data) or '..' in target.parts:
+            raise ValueError('Hosted SQLite DATABASE_URL must point inside /var/data.')
+    if env.get('CHROMA_HOST', '').strip():
+        raise ValueError('This Blueprint uses persistent local Chroma; remove CHROMA_HOST.')
+    for key in ('OLLAMA_NUM_PARALLEL', 'OLLAMA_MAX_LOADED_MODELS', 'OLLAMA_CONTEXT_LENGTH', 'C_RAM_BUDGET_MB'):
+        if not env[key].isdigit() or int(env[key]) < 1:
+            raise ValueError(f'{key} must be a positive integer.')
+    if env['CHAI_MODEL_AUTO_PULL'].lower() not in ('true', 'false'):
+        raise ValueError('CHAI_MODEL_AUTO_PULL must be true or false.')
     external = env.get('RENDER_EXTERNAL_URL', '').strip()
     if external and not env.get('CORS_ORIGINS'):
         parsed = urlsplit(external)
@@ -55,6 +68,7 @@ class Services:
     def __init__(self, env: dict[str, str]):
         self.env = env
         self.stop = threading.Event()
+        self.models_ready = threading.Event()
         self.children: list[tuple[str, subprocess.Popen, bool]] = []
         self.lock = threading.Lock()
 
@@ -94,15 +108,26 @@ class Services:
             while not self.stop.is_set():
                 try:
                     with urllib.request.urlopen('http://127.0.0.1:11434/api/tags', timeout=3) as response:
-                        names = {item['name'] for item in json.load(response).get('models', [])}
-                    canonical = model if ':' in model else model + ':latest'
+                        payload = json.load(response)
+                    if not isinstance(payload, dict) or not isinstance(payload.get('models'), list):
+                        raise ValueError('Invalid model inventory.')
+                    names = set()
+                    for item in payload['models']:
+                        if not isinstance(item, dict) or not isinstance(item.get('name'), str) or not isinstance(item.get('digest'), str) or not item['digest']:
+                            raise ValueError('Invalid model inventory entry.')
+                        names.add(item['name'])
+                    canonical = model if ':' in model.rsplit('/', 1)[-1] else model + ':latest'
                     if canonical in names:
                         break
+                    if self.env['CHAI_MODEL_AUTO_PULL'].lower() != 'true':
+                        self.stop.wait(5)
+                        continue
                     process = self.launch('Model download', ['ollama', 'pull', model], critical=False)
                     while process.poll() is None and not self.stop.wait(.5):
                         pass
                     if process.returncode == 0:
-                        break
+                        # Check the committed manifest, rather than trusting CLI exit alone.
+                        continue
                     print('Model download failed; retrying in 30 seconds.', flush=True)
                 except (OSError, ValueError, KeyError, RuntimeError):
                     if self.stop.is_set():
@@ -110,7 +135,25 @@ class Services:
                     print('Model setup is temporarily unavailable; retrying.', flush=True)
                 self.stop.wait(30)
         if not self.stop.is_set():
+            self.models_ready.set()
             print('Required Ollama models are available.', flush=True)
+
+    def retire(self, name: str):
+        """Replace the read-only setup API before opening the persistent vector store."""
+        with self.lock:
+            selected = [entry for entry in self.children if entry[0] == name]
+            self.children = [entry for entry in self.children if entry[0] != name]
+        for _, child, _ in selected:
+            if child.poll() is None:
+                try:
+                    os.killpg(child.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+            try:
+                child.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(child.pid, signal.SIGKILL)
+                child.wait()
 
     def close(self):
         self.stop.set()
@@ -154,6 +197,8 @@ def main() -> int:
     port = public_port(os.environ.get('PORT', '10000'))
     env = runtime_environment(dict(os.environ))
     Path('/var/data').mkdir(parents=True, exist_ok=True)
+    if env['DATABASE_URL'].startswith('sqlite'):
+        Path(env['DATABASE_URL'].partition(':///')[2].split('?', 1)[0]).parent.mkdir(parents=True, exist_ok=True)
     # Password goes over stdin, never command-line arguments or image layers.
     subprocess.run(['htpasswd', '-iBc', '/tmp/chaigaram.htpasswd', 'demo'],
                    input=password+'\n', text=True, capture_output=True, check=True)
@@ -173,18 +218,27 @@ def main() -> int:
         # Restarted SQL jobs can resume during API lifespan startup. Make their
         # inference transport available before that startup begins.
         services.ready('http://127.0.0.1:11434/api/tags')
-        services.launch('API', [sys.executable, '-m', 'uvicorn', 'backend.app:app',
-                               '--host', '127.0.0.1', '--port', '8000', '--workers', '1',
-                               '--timeout-graceful-shutdown', '80'])
+        # Opening RAG before the first model download records an unresolved model
+        # identity. The next restart would invalidate its patent vectors. A small
+        # read-only API keeps platform probes and setup status available meanwhile.
+        services.launch('Setup API', [sys.executable, '-m', 'uvicorn', 'deploy.render.setup_api:app',
+                                     '--host', '127.0.0.1', '--port', '8000'])
         services.launch('Dashboard', ['node', 'frontend/dist-render/server/index.mjs'])
         services.ready('http://127.0.0.1:8000/api/live')
         services.ready('http://127.0.0.1:3000/')
         services.launch('Gateway', ['nginx', '-c', str(config), '-g', 'daemon off;'])
-        if env.get('CHAI_MODEL_AUTO_PULL', 'true').lower() == 'true':
-            threading.Thread(target=services.bootstrap_models, daemon=True).start()
+        threading.Thread(target=services.bootstrap_models, daemon=True).start()
+        api_started = False
         while not services.stop.wait(.5):
             if services.failures():
                 raise RuntimeError(f'A required process exited: {services.failures()}')
+            if services.models_ready.is_set() and not api_started:
+                services.retire('Setup API')
+                services.launch('API', [sys.executable, '-m', 'uvicorn', 'backend.app:app',
+                                       '--host', '127.0.0.1', '--port', '8000', '--workers', '1',
+                                       '--timeout-graceful-shutdown', '80'])
+                services.ready('http://127.0.0.1:8000/api/live')
+                api_started = True
         return 0
     finally:
         services.close()

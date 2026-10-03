@@ -13,6 +13,7 @@ name: Render container
       - extension/**
       - tests/**
       - scripts/check_render_container.py
+      - scripts/check_patent_features.py
       - .github/workflows/render.yml
   pull_request:
   workflow_dispatch:
@@ -42,5 +43,5 @@ jobs:
           tags: chaigaram-render:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Gateway, API, SSR, storage and shutdown smoke checks
+      - name: First boot, CPU models, patent checks, gateway, persistence and failure recovery
         run: python scripts/check_render_container.py --image chaigaram-render:test

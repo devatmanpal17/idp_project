@@ -33,7 +33,10 @@ in Chrome/Edge; websites cannot automatically install extensions.
    **`demo`** and `CHAI_HOST_PASSWORD`. All dashboard and API paths are gated.
    `/healthz` exposes only `{"status":"ok"}` for platform probes.
 6. First startup downloads models onto `/var/data/ollama`. The dashboard starts
-   before downloads finish. Wait until the engine says **ready**, or authenticated
+   before downloads finish. A read-only setup API reports `setup_required` and
+   returns a retryable 503 for learning operations. The persistent patent store
+   opens only after both model manifests are available, so its embedding identity
+   stays consistent across the first restart. Wait until the engine says **ready**, or authenticated
    `/api/health` returns `"status":"ready"`, before testing AI. Logs show progress;
    temporary download failures retry automatically.
 7. Download the extension ZIP from the dashboard's **Extension** screen, extract it,
@@ -90,6 +93,11 @@ data. Public multi-user hosting first requires authenticated API users and data
 isolation. Startup refuses a missing/invalid password. Ollama, Node and FastAPI
 listen only on loopback behind the public gateway.
 Protected pages, API responses, and downloads disable shared caching.
+Blank model, memory and database settings use the Blueprint defaults. A custom
+SQLite `DATABASE_URL` must stay inside `/var/data`; temporary or in-memory paths
+are rejected. Remove any localhost `CHROMA_HOST` setting: this Blueprint uses
+Chroma on its mounted disk. `CHAI_MODEL_AUTO_PULL=false` disables downloads and
+keeps the setup API active until both models are installed manually.
 
 Disk services cannot scale to multiple instances and have a short redeploy outage.
 CPU generation can be slower than a local GPU; increase resources if your workload
@@ -104,9 +112,11 @@ existing one-minute deadline.
 
 GitHub Actions **Render container** builds the Linux image and tests its real
 gateway password boundary, SSR routes/assets, API validation, private Ollama,
-persistent storage across restart, and graceful shutdown. It skips model downloads
-and does not establish AI speed or correctness on Render. Existing real-model
-patent checks remain separate. With a running Docker daemon, reproduce it:
+safe first-boot setup, automatic real model downloads, CPU embedding, nine patent
+acceptance checks, actual records across restart, dependency failure recovery,
+and graceful shutdown. It limits the container to 4 CPU and 8 GB RAM. This does
+not establish latency on Render's actual infrastructure. With a running Docker
+daemon, reproduce it (downloads several GB into disposable test storage):
 
 ```powershell
 docker build -t chaigaram-render:test .

@@ -2,8 +2,11 @@
 import unittest
 from pathlib import Path
 import tempfile
+import io
+import json
+from unittest.mock import Mock, patch
 from zipfile import ZipFile
-from deploy.render.start import public_port, runtime_environment, validate_password
+from deploy.render.start import Services, public_port, runtime_environment, validate_password
 from deploy.render.package_extension import package_extension
 
 
@@ -41,7 +44,7 @@ class RenderConfigurationTests(unittest.TestCase):
         self.assertEqual(len(original), 2)
 
     def test_invalid_ports_passwords_and_external_origins_fail_closed(self):
-        for value in ('0', '80', '3000', '8000', '11434', '65536', '10000;bad'):
+        for value in ('0', '80', '3000', '8000', '11434', '18012', '18013', '19099', '65536', '10000;bad'):
             with self.assertRaises(ValueError):
                 public_port(value)
         self.assertEqual(public_port('10000'), 10000)
@@ -52,6 +55,109 @@ class RenderConfigurationTests(unittest.TestCase):
         for value in ('http://demo.test', 'https://user:secret@demo.test'):
             with self.assertRaises(ValueError):
                 runtime_environment({'RENDER_EXTERNAL_URL': value})
+
+    def test_blank_environment_values_use_persistent_defaults(self):
+        env = runtime_environment(dict.fromkeys(('DATABASE_URL', 'OLLAMA_EMBED_MODEL',
+                                  'OLLAMA_CHAT_MODEL', 'C_RAM_BUDGET_MB', 'CHAI_MODEL_AUTO_PULL'), '  '))
+        self.assertEqual(env['DATABASE_URL'], 'sqlite:////var/data/analytics.sqlite3')
+        self.assertEqual(env['OLLAMA_EMBED_MODEL'], 'embeddinggemma')
+        self.assertEqual(env['OLLAMA_CHAT_MODEL'], 'llama3.2:3b')
+        self.assertEqual(env['C_RAM_BUDGET_MB'], '6144')
+        self.assertEqual(env['CHAI_MODEL_AUTO_PULL'], 'true')
+
+    def test_ephemeral_or_escaping_sqlite_paths_are_rejected(self):
+        for url in ('sqlite://', 'sqlite:///:memory:', 'sqlite:///data/local.db',
+                    'sqlite:////app/data/local.db', 'sqlite:////var/data/../lost.db'):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                runtime_environment({'DATABASE_URL': url})
+        self.assertEqual(runtime_environment({'DATABASE_URL': 'sqlite:////var/data/custom.db'})['DATABASE_URL'],
+                         'sqlite:////var/data/custom.db')
+        with self.assertRaises(ValueError):
+            runtime_environment({'CHROMA_HOST': 'localhost'})
+
+    def test_invalid_hosted_runtime_values_fail_before_process_start(self):
+        for key in ('OLLAMA_NUM_PARALLEL', 'OLLAMA_MAX_LOADED_MODELS', 'OLLAMA_CONTEXT_LENGTH', 'C_RAM_BUDGET_MB'):
+            for value in ('0', '-1', 'bad'):
+                with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                    runtime_environment({key: value})
+        with self.assertRaises(ValueError):
+            runtime_environment({'CHAI_MODEL_AUTO_PULL': 'flase'})
+
+
+class ModelBootstrapTests(unittest.TestCase):
+    def inventory(self, *names):
+        return {'models': [{'name': name, 'digest': 'verified-model-digest'} for name in names]}
+
+    def run_bootstrap(self, responses, env=None, returncodes=None):
+        services = Services(runtime_environment(env or {}))
+        replies = iter(responses)
+        codes = iter(returncodes or [0] * 10)
+        def response(*args, **kwargs):
+            value = next(replies)  # Unexpected retries fail the test instead of hanging.
+            if isinstance(value, Exception):
+                raise value
+            return io.BytesIO(json.dumps(value).encode())
+        def launch(*args, **kwargs):
+            process = Mock(returncode=next(codes))
+            process.poll.return_value = process.returncode
+            return process
+        with patch('deploy.render.start.urllib.request.urlopen', side_effect=response), \
+             patch.object(services, 'launch', side_effect=launch) as spawned, \
+             patch.object(services.stop, 'wait', return_value=False):
+            services.bootstrap_models()
+        return services, spawned
+
+    def test_first_boot_waits_for_both_committed_model_manifests(self):
+        services, spawned = self.run_bootstrap([
+            self.inventory(), self.inventory('embeddinggemma:latest'),
+            self.inventory('embeddinggemma:latest'),
+            self.inventory('embeddinggemma:latest', 'llama3.2:3b')])
+        self.assertTrue(services.models_ready.is_set())
+        self.assertEqual([call.args[1] for call in spawned.call_args_list],
+                         [['ollama', 'pull', 'embeddinggemma'], ['ollama', 'pull', 'llama3.2:3b']])
+
+    def test_failed_pull_transport_and_malformed_inventory_retry(self):
+        services, spawned = self.run_bootstrap([
+            OSError('transport unavailable'), [], {'models': [None]},
+            {'models': [{'name': 'embeddinggemma:latest'}]}, self.inventory(),
+            self.inventory(), self.inventory('embeddinggemma:latest', 'llama3.2:3b'),
+            self.inventory('embeddinggemma:latest', 'llama3.2:3b')], returncodes=[1, 0])
+        self.assertTrue(services.models_ready.is_set())
+        self.assertEqual(spawned.call_count, 2)
+
+    def test_successful_cli_without_manifest_does_not_open_api(self):
+        services, spawned = self.run_bootstrap([
+            self.inventory(), self.inventory(),
+            self.inventory('embeddinggemma:latest', 'llama3.2:3b'),
+            self.inventory('embeddinggemma:latest', 'llama3.2:3b')])
+        self.assertTrue(services.models_ready.is_set())
+        self.assertEqual(spawned.call_count, 2)
+
+    def test_existing_namespaced_models_do_not_download_on_restart(self):
+        inventory = self.inventory('registry.test:5000/team/embed:latest', 'chat:study')
+        services, spawned = self.run_bootstrap([inventory, inventory],
+            {'OLLAMA_EMBED_MODEL': 'registry.test:5000/team/embed', 'OLLAMA_CHAT_MODEL': 'chat:study'})
+        self.assertTrue(services.models_ready.is_set())
+        spawned.assert_not_called()
+
+    def test_manual_setup_waits_without_launching_downloads(self):
+        services, spawned = self.run_bootstrap([
+            self.inventory(), self.inventory('embeddinggemma:latest', 'llama3.2:3b'),
+            self.inventory('embeddinggemma:latest', 'llama3.2:3b')], {'CHAI_MODEL_AUTO_PULL': 'false'})
+        self.assertTrue(services.models_ready.is_set())
+        spawned.assert_not_called()
+
+    def test_shutdown_during_download_never_opens_api(self):
+        services = Services(runtime_environment({}))
+        process = Mock(returncode=None)
+        process.poll.return_value = None
+        def stop(*args):
+            services.stop.set()
+            return True
+        with patch('deploy.render.start.urllib.request.urlopen', return_value=io.BytesIO(json.dumps(self.inventory()).encode())), \
+             patch.object(services, 'launch', return_value=process), patch.object(services.stop, 'wait', side_effect=stop):
+            services.bootstrap_models()
+        self.assertFalse(services.models_ready.is_set())
 
 
 if __name__ == '__main__':
